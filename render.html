@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TagVault — Render View</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+.table-head-render { grid-template-columns: 2.5fr 1.3fr 2fr 1fr; }
+.table-row-render  { grid-template-columns: 2.5fr 1.3fr 2fr 1fr; }
+
+/* Category breakdown cards */
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 28px; }
+.cat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-s);
+  cursor: pointer;
+  transition: all 0.16s;
+  position: relative; overflow: hidden;
+}
+.cat-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.cat-card:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
+.cat-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,110,247,.12); }
+.cat-card-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text2); margin-bottom: 8px; }
+.cat-card-num { font-size: 28px; font-weight: 800; letter-spacing: -1.5px; font-family: 'JetBrains Mono', monospace; color: var(--text); }
+.cat-card-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+/* Tag cloud */
+.tag-cloud {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-s);
+}
+.tag-cloud-title { font-size: 13px; font-weight: 700; color: var(--text2); margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.6px; }
+.tag-cloud-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag-cloud-item {
+  padding: 5px 14px; border-radius: 20px;
+  background: var(--surface2); border: 1px solid var(--border);
+  font-size: 13px; font-weight: 600; color: var(--text2);
+  cursor: pointer; transition: all 0.14s;
+  display: flex; align-items: center; gap: 6px;
+}
+.tag-cloud-item:hover { background: var(--accent-s); color: var(--accent); border-color: var(--accent); }
+.tag-cloud-item.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tag-count {
+  background: rgba(0,0,0,.1);
+  border-radius: 10px; padding: 0 6px;
+  font-size: 10px; font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.tag-cloud-item.active .tag-count { background: rgba(255,255,255,.25); }
+
+/* Export bar */
+.export-bar {
+  display: flex; gap: 10px; align-items: center;
+  margin-bottom: 20px;
+}
+</style>
+</head>
+<body>
+<div id="app">
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">
+        <div class="brand-icon">🏷</div>
+        <div>
+          <div class="brand-name">TagVault</div>
+          <div class="brand-sub">Tag Management</div>
+        </div>
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Pages</div>
+      <a href="index.html" class="nav-link">
+        <span class="nav-icon">✚</span> Add Entry
+      </a>
+      <a href="inventory.html" class="nav-link">
+        <span class="nav-icon">📦</span> Inventory
+        <span class="nav-badge">{{ entries.length }}</span>
+      </a>
+      <a href="render.html" class="nav-link active">
+        <span class="nav-icon">📊</span> Render View
+      </a>
+    </div>
+    <div class="sidebar-footer">
+      {{ entries.length }} records · {{ uniqueCategories }} categories
+    </div>
+  </aside>
+
+  <!-- CONTENT -->
+  <div class="content">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Render View</div>
+        <div class="topbar-sub">Overview, analytics, and full data table</div>
+      </div>
+      <div class="flex gap-8 items-center">
+        <button class="btn btn-ghost btn-sm" @click="exportJSON">⬇ Export JSON</button>
+        <a href="index.html" class="btn btn-primary btn-sm"><span>✚</span> Add</a>
+      </div>
+    </div>
+
+    <div class="page">
+
+      <!-- Stats row -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-num">{{ entries.length }}</div>
+          <div class="stat-label">Total Entries</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">{{ uniqueCategories }}</div>
+          <div class="stat-label">Categories</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">{{ totalTags }}</div>
+          <div class="stat-label">Total Tags</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">{{ uniqueTagCount }}</div>
+          <div class="stat-label">Unique Tags</div>
+        </div>
+      </div>
+
+      <!-- Category cards -->
+      <div class="cat-grid">
+        <div class="cat-card" v-for="c in categoryStats" :key="c.name"
+          :class="{selected: activeCat===c.name}"
+          :style="{'border-top-color': c.color}"
+          @click="activeCat = activeCat===c.name ? '' : c.name">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span class="cat-dot" :style="{background:c.color,width:'10px',height:'10px'}"></span>
+            <div class="cat-card-label">{{ c.name }}</div>
+          </div>
+          <div class="cat-card-num">{{ c.count }}</div>
+          <div class="cat-card-sub">{{ c.tagCount }} total tags</div>
+        </div>
+      </div>
+
+      <!-- Tag cloud -->
+      <div class="tag-cloud" v-if="allTagFreq.length">
+        <div class="tag-cloud-title">Tag Cloud — click to filter</div>
+        <div class="tag-cloud-wrap">
+          <div class="tag-cloud-item"
+            v-for="t in allTagFreq.slice(0, 40)" :key="t.tag"
+            :class="{active: activeTag===t.tag}"
+            @click="activeTag = activeTag===t.tag ? '' : t.tag">
+            {{ t.tag }}
+            <span class="tag-count">{{ t.count }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter + Table -->
+      <div class="export-bar">
+        <div style="font-size:13px;font-weight:600;color:var(--text2)">
+          Showing <span style="color:var(--accent);font-family:'JetBrains Mono',monospace">{{ filteredEntries.length }}</span> of {{ entries.length }} entries
+          <span v-if="activeCat || activeTag" style="color:var(--text3)"> · filtered</span>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" v-if="activeCat||activeTag" @click="activeCat='';activeTag=''">✕ Clear filters</button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head table-head-render">
+          <div class="th">Title</div>
+          <div class="th">Category</div>
+          <div class="th">Tags</div>
+          <div class="th">Date Added</div>
+        </div>
+        <div class="table-body">
+          <div v-if="filteredEntries.length===0" class="empty">
+            <div class="empty-icon">🗂</div>
+            <div class="empty-msg">No entries match the current filter</div>
+            <div class="empty-sub">
+              <span style="cursor:pointer;color:var(--accent)" @click="activeCat='';activeTag=''">Clear filters</span>
+              or <a href="index.html" style="color:var(--accent)">add new entries</a>
+            </div>
+          </div>
+          <div class="table-row table-row-render" v-for="e in filteredEntries" :key="e.id">
+            <div>
+              <div class="cell-title">{{ e.title }}</div>
+              <div class="cell-sub font-mono">ID #{{ e.id }}</div>
+            </div>
+            <div>
+              <span class="cat-badge" :style="{background: catColor(e.category)+'18', color: catColor(e.category)}">
+                {{ e.category }}
+              </span>
+            </div>
+            <div class="tag-list">
+              <span class="pill" v-for="t in e.tags" :key="t" :class="getPillClass(t)"
+                style="font-size:11px;padding:2px 8px;cursor:pointer"
+                @click="activeTag = activeTag===t ? '' : t">
+                {{ t }}
+              </span>
+            </div>
+            <div class="text-sm text-muted font-mono">{{ formatDate(e.createdAt) }}</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast-container">
+  <div class="toast" v-for="t in toasts" :key="t.id" :class="t.type">{{ t.msg }}</div>
+</div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+const { createApp, ref, computed } = Vue;
+createApp({
+  setup() {
+    const entries    = ref(loadEntries());
+    const categories = ref(loadCategories());
+    const activeCat  = ref('');
+    const activeTag  = ref('');
+    const toasts     = ref([]);
+
+    function catColor(name) { return (categories.value.find(c=>c.name===name)||{}).color||'#94a3b8'; }
+    function getPillClass(t) {
+      const m={cv:'pill-cv',excel:'pill-excel',word:'pill-word',pdf:'pill-pdf'};
+      return 'pill '+(m[t.toLowerCase()]||'pill-other');
+    }
+
+    const totalTags        = computed(()=>entries.value.reduce((s,e)=>s+e.tags.length,0));
+    const uniqueCategories = computed(()=>new Set(entries.value.map(e=>e.category)).size);
+    const uniqueTagCount   = computed(()=>new Set(entries.value.flatMap(e=>e.tags)).size);
+
+    const categoryStats = computed(()=>
+      categories.value
+        .map(c=>({
+          ...c,
+          count: entries.value.filter(e=>e.category===c.name).length,
+          tagCount: entries.value.filter(e=>e.category===c.name).reduce((s,e)=>s+e.tags.length,0)
+        }))
+        .filter(c=>c.count>0)
+    );
+
+    const allTagFreq = computed(()=>{
+      const freq={};
+      entries.value.forEach(e=>e.tags.forEach(t=>{ freq[t]=(freq[t]||0)+1; }));
+      return Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([tag,count])=>({tag,count}));
+    });
+
+    const filteredEntries = computed(()=>{
+      let r = entries.value;
+      if (activeCat.value)  r = r.filter(e=>e.category===activeCat.value);
+      if (activeTag.value)  r = r.filter(e=>e.tags.includes(activeTag.value));
+      return r;
+    });
+
+    function exportJSON() {
+      const data = JSON.stringify(entries.value, null, 2);
+      const blob = new Blob([data], {type:'application/json'});
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = 'tagvault-export.json';
+      a.click(); URL.revokeObjectURL(url);
+      showToast('Export downloaded!', 'success');
+    }
+
+    function showToast(msg, type='info') {
+      const id=Date.now();
+      toasts.value.push({id,msg,type});
+      setTimeout(()=>{ toasts.value=toasts.value.filter(t=>t.id!==id); },2600);
+    }
+
+    return {
+      entries, categories, activeCat, activeTag, toasts,
+      catColor, getPillClass, totalTags, uniqueCategories, uniqueTagCount,
+      categoryStats, allTagFreq, filteredEntries,
+      exportJSON, formatDate
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

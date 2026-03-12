@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TagVault — Inventory</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+.table-head-inv { grid-template-columns: 2.5fr 1.2fr 2fr 1fr 80px; }
+.table-row-inv  { grid-template-columns: 2.5fr 1.2fr 2fr 1fr 80px; }
+
+.sort-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text3); font-size: 11px;
+  padding: 0; margin-left: 4px;
+  transition: color 0.13s;
+}
+.sort-btn:hover, .sort-btn.asc, .sort-btn.desc { color: var(--accent); }
+
+.bulk-bar {
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-s);
+  padding: 10px 18px;
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 14px;
+  font-size: 13px; font-weight: 600;
+  animation: rowIn 0.18s ease;
+}
+
+.confirm-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.confirm-box {
+  background: var(--surface);
+  border-radius: 14px; padding: 28px;
+  width: 360px; box-shadow: var(--shadow-l);
+  animation: modalIn 0.18s ease;
+}
+.confirm-title { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
+.confirm-sub { font-size: 13px; color: var(--text2); margin-bottom: 22px; }
+</style>
+</head>
+<body>
+<div id="app">
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">
+        <div class="brand-icon">🏷</div>
+        <div>
+          <div class="brand-name">TagVault</div>
+          <div class="brand-sub">Tag Management</div>
+        </div>
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Pages</div>
+      <a href="index.html" class="nav-link">
+        <span class="nav-icon">✚</span> Add Entry
+      </a>
+      <a href="inventory.html" class="nav-link active">
+        <span class="nav-icon">📦</span> Inventory
+        <span class="nav-badge">{{ entries.length }}</span>
+      </a>
+      <a href="render.html" class="nav-link">
+        <span class="nav-icon">📊</span> Render View
+      </a>
+    </div>
+    <div class="sidebar-footer">
+      {{ entries.length }} records · {{ totalTags }} tags
+    </div>
+  </aside>
+
+  <!-- CONTENT -->
+  <div class="content">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Inventory</div>
+        <div class="topbar-sub">All saved entries — search, filter, manage</div>
+      </div>
+      <div class="flex gap-8 items-center">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input class="search-input" v-model="search" placeholder="Search title, tag, category..." />
+        </div>
+        <a href="index.html" class="btn btn-primary btn-sm"><span>✚</span> Add</a>
+      </div>
+    </div>
+
+    <div class="page">
+
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-num">{{ entries.length }}</div>
+          <div class="stat-label">Total Records</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">{{ totalTags }}</div>
+          <div class="stat-label">Total Tags</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">{{ uniqueCats }}</div>
+          <div class="stat-label">Categories</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">{{ filteredEntries.length }}</div>
+          <div class="stat-label">Showing</div>
+        </div>
+      </div>
+
+      <!-- Filter chips -->
+      <div class="filter-row">
+        <div class="chip" :class="{active: catFilter===''}" @click="catFilter=''">All</div>
+        <div class="chip" v-for="c in categories" :key="c.name"
+          :class="{active: catFilter===c.name}"
+          @click="catFilter = catFilter===c.name ? '' : c.name">
+          <span style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle" :style="{background: c.color}"></span>
+          {{ c.name }}
+        </div>
+      </div>
+
+      <!-- Bulk bar -->
+      <div class="bulk-bar" v-if="selected.length">
+        <span>{{ selected.length }} selected</span>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,.2);color:#fff;border:none" @click="confirmDelete=true">🗑 Delete Selected</button>
+        <button class="btn btn-sm" style="background:transparent;color:rgba(255,255,255,.7);border:none" @click="selected=[]">✕ Cancel</button>
+      </div>
+
+      <!-- Table -->
+      <div class="table-card">
+        <div class="table-head table-head-inv">
+          <div class="th" style="display:flex;align-items:center;gap:4px">
+            <input type="checkbox" @change="toggleAll" :checked="allSelected" style="cursor:pointer" />
+            &nbsp;Title
+            <button class="sort-btn" :class="sortField==='title' ? sortDir : ''" @click="setSort('title')">
+              {{ sortField==='title' ? (sortDir==='asc' ? '↑' : '↓') : '↕' }}
+            </button>
+          </div>
+          <div class="th">Category</div>
+          <div class="th">Tags</div>
+          <div class="th">Date
+            <button class="sort-btn" :class="sortField==='createdAt' ? sortDir : ''" @click="setSort('createdAt')">
+              {{ sortField==='createdAt' ? (sortDir==='asc' ? '↑' : '↓') : '↕' }}
+            </button>
+          </div>
+          <div class="th">Actions</div>
+        </div>
+        <div class="table-body">
+          <div v-if="filteredEntries.length===0" class="empty">
+            <div class="empty-icon">📂</div>
+            <div class="empty-msg">No entries found</div>
+            <div class="empty-sub">Try a different filter or <a href="index.html" style="color:var(--accent)">add a new entry</a></div>
+          </div>
+          <div class="table-row table-row-inv" v-for="e in filteredEntries" :key="e.id"
+            :style="selected.includes(e.id) ? 'background:var(--accent-s)' : ''">
+            <div class="cell-title" style="display:flex;align-items:center;gap:10px">
+              <input type="checkbox" :checked="selected.includes(e.id)" @change="toggleSelect(e.id)" style="cursor:pointer;flex-shrink:0" />
+              <div>
+                <div>{{ e.title }}</div>
+              </div>
+            </div>
+            <div>
+              <span class="cat-badge" :style="{background: catColor(e.category)+'18', color: catColor(e.category)}">
+                {{ e.category }}
+              </span>
+            </div>
+            <div class="tag-list">
+              <span class="pill" v-for="t in e.tags.slice(0,4)" :key="t" :class="getPillClass(t)" style="font-size:11px;padding:2px 8px">{{ t }}</span>
+              <span v-if="e.tags.length>4" class="pill pill-other" style="font-size:11px;padding:2px 8px">+{{ e.tags.length-4 }}</span>
+            </div>
+            <div class="text-sm text-muted font-mono">{{ formatDate(e.createdAt) }}</div>
+            <div class="flex gap-8">
+              <button class="btn-icon" title="Edit" @click="startEdit(e)">✏️</button>
+              <button class="btn-icon danger" title="Delete" @click="deleteOne(e.id)">🗑</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" v-if="editEntry" @click.self="editEntry=null">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Edit Entry</div>
+      <button class="btn-icon" @click="editEntry=null">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Title</label>
+      <input class="input" v-model="editEntry.title" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Category</label>
+      <div class="select-wrap">
+        <div class="select-btn" :class="{open: editCatOpen}" @click="editCatOpen=!editCatOpen">
+          <span style="display:flex;align-items:center;gap:8px">
+            <span class="cat-dot" :style="{background: catColor(editEntry.category)}"></span>
+            {{ editEntry.category }}
+          </span>
+          <span class="select-arrow">▼</span>
+        </div>
+        <div class="dropdown" v-if="editCatOpen">
+          <div class="dropdown-item" v-for="c in categories" :key="c.name"
+            :class="{active: editEntry.category===c.name}"
+            @click="editEntry.category=c.name; editCatOpen=false">
+            <span class="cat-dot" :style="{background: c.color}"></span>
+            {{ c.name }}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tags</label>
+      <div class="tag-input-wrap" @click="$refs.editTagIn.focus()">
+        <span class="pill" v-for="(t,i) in editEntry.tags" :key="i" :class="getPillClass(t)">
+          {{ t }}
+          <span class="pill-x" @click.stop="editEntry.tags.splice(i,1)">×</span>
+        </span>
+        <input ref="editTagIn" class="tag-raw-input" v-model="editTagInput"
+          placeholder="Add tag..."
+          @keydown="onEditTagKey" />
+      </div>
+    </div>
+    <div class="flex gap-12">
+      <button class="btn btn-primary" @click="saveEdit">Save Changes</button>
+      <button class="btn btn-ghost" @click="editEntry=null">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Delete Modal -->
+<div class="confirm-overlay" v-if="confirmDelete">
+  <div class="confirm-box">
+    <div class="confirm-title">Delete {{ selected.length }} entr{{ selected.length===1?'y':'ies' }}?</div>
+    <div class="confirm-sub">This action cannot be undone.</div>
+    <div class="flex gap-12">
+      <button class="btn btn-danger" @click="bulkDelete">Delete</button>
+      <button class="btn btn-ghost" @click="confirmDelete=false">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast-container">
+  <div class="toast" v-for="t in toasts" :key="t.id" :class="t.type">{{ t.msg }}</div>
+</div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+const { createApp, ref, computed } = Vue;
+createApp({
+  setup() {
+    const entries    = ref(loadEntries());
+    const categories = ref(loadCategories());
+    const search     = ref('');
+    const catFilter  = ref('');
+    const selected   = ref([]);
+    const confirmDelete = ref(false);
+    const editEntry  = ref(null);
+    const editCatOpen= ref(false);
+    const editTagInput = ref('');
+    const sortField  = ref('createdAt');
+    const sortDir    = ref('desc');
+    const toasts     = ref([]);
+
+    function catColor(name) { return (categories.value.find(c=>c.name===name)||{}).color||'#94a3b8'; }
+    function getPillClass(t) {
+      const m={cv:'pill-cv',excel:'pill-excel',word:'pill-word',pdf:'pill-pdf'};
+      return 'pill '+(m[t.toLowerCase()]||'pill-other');
+    }
+
+    function setSort(f) {
+      if (sortField.value===f) sortDir.value = sortDir.value==='asc'?'desc':'asc';
+      else { sortField.value=f; sortDir.value='asc'; }
+    }
+
+    const filteredEntries = computed(() => {
+      let r = [...entries.value];
+      if (catFilter.value) r = r.filter(e=>e.category===catFilter.value);
+      if (search.value.trim()) {
+        const q = search.value.toLowerCase();
+        r = r.filter(e =>
+          e.title.toLowerCase().includes(q) ||
+          e.category.toLowerCase().includes(q) ||
+          e.tags.some(t=>t.toLowerCase().includes(q))
+        );
+      }
+      r.sort((a,b)=>{
+        let av=a[sortField.value], bv=b[sortField.value];
+        if (typeof av==='string') { av=av.toLowerCase(); bv=bv.toLowerCase(); }
+        return sortDir.value==='asc' ? (av>bv?1:-1) : (av<bv?1:-1);
+      });
+      return r;
+    });
+
+    const totalTags   = computed(()=>entries.value.reduce((s,e)=>s+e.tags.length,0));
+    const uniqueCats  = computed(()=>new Set(entries.value.map(e=>e.category)).size);
+    const allSelected = computed(()=>filteredEntries.value.length && filteredEntries.value.every(e=>selected.value.includes(e.id)));
+
+    function toggleSelect(id) {
+      const i = selected.value.indexOf(id);
+      if (i>-1) selected.value.splice(i,1); else selected.value.push(id);
+    }
+    function toggleAll(e) {
+      if (e.target.checked) selected.value = filteredEntries.value.map(e=>e.id);
+      else selected.value = [];
+    }
+
+    function deleteOne(id) {
+      entries.value = entries.value.filter(e=>e.id!==id);
+      selected.value = selected.value.filter(s=>s!==id);
+      saveEntries(entries.value);
+      showToast('Entry deleted', 'info');
+    }
+
+    function bulkDelete() {
+      entries.value = entries.value.filter(e=>!selected.value.includes(e.id));
+      saveEntries(entries.value);
+      showToast(`${selected.value.length} entries deleted`, 'info');
+      selected.value = [];
+      confirmDelete.value = false;
+    }
+
+    function startEdit(e) {
+      editEntry.value = JSON.parse(JSON.stringify(e));
+      editCatOpen.value = false;
+      editTagInput.value = '';
+    }
+
+    function onEditTagKey(ev) {
+      if (ev.key==='Enter'||ev.key===',') {
+        ev.preventDefault();
+        const v=editTagInput.value.trim().replace(/,$/,'');
+        if (v && !editEntry.value.tags.includes(v)) editEntry.value.tags.push(v);
+        editTagInput.value='';
+      } else if (ev.key==='Backspace'&&!editTagInput.value&&editEntry.value.tags.length) {
+        editEntry.value.tags.pop();
+      }
+    }
+
+    function saveEdit() {
+      if (editTagInput.value.trim()) {
+        const v=editTagInput.value.trim();
+        if (!editEntry.value.tags.includes(v)) editEntry.value.tags.push(v);
+        editTagInput.value='';
+      }
+      const i = entries.value.findIndex(e=>e.id===editEntry.value.id);
+      if (i>-1) entries.value[i] = { ...editEntry.value };
+      saveEntries(entries.value);
+      showToast('Entry updated', 'success');
+      editEntry.value = null;
+    }
+
+    function showToast(msg, type='info') {
+      const id=Date.now();
+      toasts.value.push({id,msg,type});
+      setTimeout(()=>{ toasts.value=toasts.value.filter(t=>t.id!==id); },2600);
+    }
+
+    return {
+      entries, categories, search, catFilter, selected, confirmDelete,
+      editEntry, editCatOpen, editTagInput, sortField, sortDir, toasts,
+      catColor, getPillClass, setSort, filteredEntries, totalTags, uniqueCats,
+      allSelected, toggleSelect, toggleAll, deleteOne, bulkDelete,
+      startEdit, onEditTagKey, saveEdit, formatDate
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

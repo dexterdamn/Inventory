@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TagVault — Add Entry</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+.add-card { padding: 28px; max-width: 600px; }
+.section-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+/* Progress indicator */
+.progress-steps {
+  display: flex; align-items: center; gap: 0;
+  margin-bottom: 28px;
+}
+.step {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 600; color: var(--text3);
+}
+.step.done { color: var(--success); }
+.step.active { color: var(--accent); }
+.step-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--surface3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+.step.done .step-num { background: var(--success); color: #fff; }
+.step.active .step-num { background: var(--accent); color: #fff; }
+.step-line { flex: 1; height: 1px; background: var(--border); margin: 0 8px; min-width: 20px; }
+
+/* Recent list preview */
+.recent-list { margin-top: 28px; }
+.recent-title {
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--text3); margin-bottom: 12px;
+}
+.recent-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  margin-bottom: 7px;
+  transition: background 0.13s;
+}
+.recent-item:hover { background: var(--surface3); }
+.recent-icon {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; flex-shrink: 0;
+}
+.recent-meta { flex: 1; min-width: 0; }
+.recent-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent-cat  { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.recent-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+</style>
+</head>
+<body>
+<div id="app">
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">
+        <div class="brand-icon">🏷</div>
+        <div>
+          <div class="brand-name">TagVault</div>
+          <div class="brand-sub">Tag Management</div>
+        </div>
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Pages</div>
+      <a href="index.html" class="nav-link active">
+        <span class="nav-icon">✚</span> Add Entry
+      </a>
+      <a href="inventory.html" class="nav-link">
+        <span class="nav-icon">📦</span> Inventory
+        <span class="nav-badge">{{ entries.length }}</span>
+      </a>
+      <a href="render.html" class="nav-link">
+        <span class="nav-icon">📊</span> Render View
+      </a>
+    </div>
+    <div class="sidebar-footer">
+      {{ entries.length }} records saved locally
+    </div>
+  </aside>
+
+  <!-- CONTENT -->
+  <div class="content">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Add New Entry</div>
+        <div class="topbar-sub">Save a titled record with category and tags</div>
+      </div>
+      <a href="inventory.html" class="btn btn-ghost btn-sm">View Inventory →</a>
+    </div>
+
+    <div class="page">
+
+      <!-- Progress steps -->
+      <div class="progress-steps">
+        <div class="step" :class="stepClass(1)">
+          <div class="step-num">{{ form.title ? '✓' : '1' }}</div>
+          Title
+        </div>
+        <div class="step-line"></div>
+        <div class="step" :class="stepClass(2)">
+          <div class="step-num">{{ form.category ? '✓' : '2' }}</div>
+          Category
+        </div>
+        <div class="step-line"></div>
+        <div class="step" :class="stepClass(3)">
+          <div class="step-num">{{ form.tags.length ? '✓' : '3' }}</div>
+          Tags
+        </div>
+      </div>
+
+      <div class="card add-card">
+
+        <!-- Title -->
+        <div class="form-group">
+          <label class="form-label">Title <span>* required</span></label>
+          <input class="input" v-model="form.title" placeholder="e.g. John Doe Resume 2024" maxlength="120" />
+          <div style="text-align:right;font-size:11px;color:var(--text3);margin-top:4px">{{ form.title.length }}/120</div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Category -->
+        <div class="form-group">
+          <label class="form-label">Category <span>* required</span></label>
+          <div class="select-wrap">
+            <div class="select-btn" :class="{open: catOpen}" @click="catOpen=!catOpen">
+              <span v-if="form.category" style="display:flex;align-items:center;gap:8px">
+                <span class="cat-dot" :style="{background: catColor(form.category)}"></span>
+                {{ form.category }}
+              </span>
+              <span v-else class="select-placeholder">Select a category...</span>
+              <span class="select-arrow">▼</span>
+            </div>
+            <div class="dropdown" v-if="catOpen" v-click-outside="() => catOpen=false">
+              <div class="dropdown-item" v-for="c in categories" :key="c.name"
+                :class="{active: form.category===c.name}"
+                @click="form.category=c.name; catOpen=false">
+                <span class="cat-dot" :style="{background: c.color}"></span>
+                {{ c.name }}
+                <span style="margin-left:auto;font-size:11px;color:var(--text3)" v-if="form.category===c.name">✓</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Tags -->
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Tags <span>(press Enter or comma to add · backspace to remove)</span></label>
+          <div class="tag-input-wrap" @click="$refs.tagIn.focus()">
+            <span class="pill" v-for="(t,i) in form.tags" :key="i" :class="getPillClass(t)">
+              {{ t }}
+              <span class="pill-x" @click.stop="removeTag(i)">×</span>
+            </span>
+            <input
+              ref="tagIn"
+              class="tag-raw-input"
+              v-model="tagInput"
+              placeholder="Type and press Enter..."
+              @keydown="onTagKeydown"
+            />
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:5px" v-if="form.tags.length">
+            {{ form.tags.length }} tag{{ form.tags.length !== 1 ? 's' : '' }} added
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Actions -->
+        <div class="flex gap-12 items-center">
+          <button class="btn btn-primary" @click="addEntry" :disabled="!form.title || !form.category">
+            <span>✚</span> Save Entry
+          </button>
+          <button class="btn btn-ghost" @click="resetForm">Clear</button>
+          <div style="margin-left:auto;font-size:12px;color:var(--text3)" v-if="lastSaved">
+            Last saved {{ lastSaved }}
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Recent entries preview -->
+      <div class="recent-list" v-if="entries.length">
+        <div class="recent-title">Recently Added</div>
+        <div class="recent-item" v-for="e in recentEntries" :key="e.id">
+          <div class="recent-icon" :style="{background: catColor(e.category)+'20'}">
+            {{ catIcon(e.category) }}
+          </div>
+          <div class="recent-meta">
+            <div class="recent-name">{{ e.title }}</div>
+            <div class="recent-cat">{{ e.category }} · {{ formatDate(e.createdAt) }}</div>
+          </div>
+          <div class="recent-tags">
+            <span class="pill" v-for="t in e.tags.slice(0,3)" :key="t" :class="getPillClass(t)" style="font-size:11px;padding:2px 8px">{{ t }}</span>
+            <span v-if="e.tags.length > 3" class="pill pill-other" style="font-size:11px;padding:2px 8px">+{{ e.tags.length - 3 }}</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast-container">
+  <div class="toast" v-for="t in toasts" :key="t.id" :class="t.type">
+    {{ t.msg }}
+  </div>
+</div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+const { createApp, ref, computed } = Vue;
+
+createApp({
+  setup() {
+    const entries    = ref(loadEntries());
+    const categories = ref(loadCategories());
+    const catOpen    = ref(false);
+    const tagInput   = ref('');
+    const lastSaved  = ref('');
+    const toasts     = ref([]);
+
+    const form = ref({ title: '', category: '', tags: [] });
+
+    function stepClass(n) {
+      if (n === 1) return form.value.title ? 'done' : 'active';
+      if (n === 2) return form.value.category ? 'done' : (form.value.title ? 'active' : '');
+      if (n === 3) return form.value.tags.length ? 'done' : (form.value.category ? 'active' : '');
+    }
+
+    function catColor(name) { return (categories.value.find(c=>c.name===name)||{}).color || '#94a3b8'; }
+
+    function catIcon(name) {
+      const m = { CV:'📄', Excel:'📊', Word:'📝', PDF:'📕' };
+      return m[name] || '🏷';
+    }
+
+    function getPillClass(t) {
+      const m = { cv:'pill-cv', excel:'pill-excel', word:'pill-word', pdf:'pill-pdf' };
+      return 'pill ' + (m[t.toLowerCase()] || 'pill-other');
+    }
+
+    function addTag() {
+      const val = tagInput.value.trim().replace(/,+$/, '');
+      if (val && !form.value.tags.includes(val)) form.value.tags.push(val);
+      tagInput.value = '';
+    }
+
+    function removeTag(i) { form.value.tags.splice(i, 1); }
+
+    function onTagKeydown(e) {
+      if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); }
+      else if (e.key === 'Backspace' && !tagInput.value && form.value.tags.length) form.value.tags.pop();
+    }
+
+    function addEntry() {
+      if (!form.value.title.trim()) { showToast('Please enter a title', 'error'); return; }
+      if (!form.value.category)    { showToast('Please select a category', 'error'); return; }
+      if (tagInput.value.trim()) addTag();
+      const entry = { id: nextId(entries.value), ...JSON.parse(JSON.stringify(form.value)), createdAt: Date.now() };
+      entries.value.unshift(entry);
+      saveEntries(entries.value);
+      lastSaved.value = new Date().toLocaleTimeString();
+      showToast(`"${entry.title}" saved!`, 'success');
+      resetForm();
+    }
+
+    function resetForm() {
+      form.value = { title: '', category: '', tags: [] };
+      tagInput.value = '';
+      catOpen.value = false;
+    }
+
+    function showToast(msg, type = 'info') {
+      const id = Date.now();
+      toasts.value.push({ id, msg, type });
+      setTimeout(() => { toasts.value = toasts.value.filter(t => t.id !== id); }, 2600);
+    }
+
+    const recentEntries = computed(() => entries.value.slice(0, 5));
+
+    // click-outside directive
+    const vClickOutside = {
+      mounted(el, binding) {
+        el._handler = (e) => { if (!el.contains(e.target)) binding.value(e); };
+        document.addEventListener('click', el._handler);
+      },
+      unmounted(el) { document.removeEventListener('click', el._handler); }
+    };
+
+    return {
+      entries, categories, catOpen, tagInput, lastSaved, toasts, form,
+      stepClass, catColor, catIcon, getPillClass,
+      addTag, removeTag, onTagKeydown, addEntry, resetForm,
+      recentEntries, formatDate,
+      vClickOutside
+    };
+  },
+  directives: {
+    'click-outside': {
+      mounted(el, binding) {
+        el._handler = (e) => { if (!el.contains(e.target)) binding.value(e); };
+        document.addEventListener('mousedown', el._handler);
+      },
+      unmounted(el) { document.removeEventListener('mousedown', el._handler); }
+    }
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
