@@ -7,7 +7,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style/index.css">
-
 </head>
 <body>
 <div id="app">
@@ -47,7 +46,6 @@
         <div class="topbar-title">Add New Entry</div>
         <div class="topbar-sub">Save a titled record with category and tags</div>
       </div>
-      
     </div>
 
     <div class="page">
@@ -67,6 +65,7 @@
         </div>
       </div>
 
+      <!-- ── Manual Entry Card ── -->
       <div class="card add-card">
 
         <!-- Title -->
@@ -146,7 +145,65 @@
 
       </div>
 
-      <!-- Recent entries -->
+      <!-- ── Import File Card ── -->
+      <div class="import-card">
+        <div class="import-card-header">
+          <div>
+            <div class="import-card-title">
+              <span class="import-icon">📥</span>
+              Import Observations
+            </div>
+            <div class="import-card-sub">
+              Upload a CSV file — it will be parsed and automatically appear in the
+              <a href="render.html">Render View</a>.
+              Please make sure your CSV is UTF-8 encoded for best results.
+            </div>
+          </div>
+        </div>
+
+        <!-- Drop zone -->
+        <div
+          class="import-dropzone"
+          :class="{ dragover: importDragover }"
+          @dragover.prevent="importDragover = true"
+          @dragleave.prevent="importDragover = false"
+          @drop.prevent="onImportDrop"
+        >
+          <input type="file" accept=".csv" ref="fileInput" @change="onImportFileChange" />
+          <div class="import-drop-icon">📂</div>
+          <div class="import-drop-text">Drag and drop your CSV file here or <span>Select a file</span></div>
+          <div class="import-drop-hint">Supported: .csv · Max 10 MB</div>
+        </div>
+
+        <!-- Selected file preview -->
+        <div class="import-file-selected" v-if="importFile">
+          <span class="file-icon">📄</span>
+          <span class="import-file-name">{{ importFile.name }}</span>
+          <span class="import-file-size">{{ formatFileSize(importFile.size) }}</span>
+          <button class="import-remove" @click="clearImportFile" title="Remove">×</button>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="import-progress" v-if="importProgress > 0 && importProgress < 100">
+          <div class="import-progress-bar" :style="{ width: importProgress + '%' }"></div>
+        </div>
+        <div class="import-status" v-if="importProgress > 0 && importProgress < 100">
+          Processing… {{ importProgress }}%
+        </div>
+
+        <!-- Actions (no timezone) -->
+        <div class="import-actions">
+          <button class="btn-import" :disabled="!importFile" @click="runImport">
+            ↑ Import
+          </button>
+          <button class="btn btn-ghost" @click="clearImportFile">Cancel</button>
+          <a v-if="lastImportId" href="render.html" class="btn-import-link">
+            View in Render View →
+          </a>
+        </div>
+      </div>
+
+      <!-- ── Recently Added ── -->
       <div class="recent-list" v-if="recentEntries.length">
         <div class="recent-title">Recently Added</div>
         <div class="recent-item" v-for="e in recentEntries" :key="e.id">
@@ -179,6 +236,35 @@
 <script>
 const { createApp, ref, computed } = Vue;
 
+const SHEET_STORE = 'tagvault_sheets';
+function loadSheets() { try { return JSON.parse(localStorage.getItem(SHEET_STORE)) || {}; } catch { return {}; } }
+function saveSheets(d) { localStorage.setItem(SHEET_STORE, JSON.stringify(d)); }
+
+// Robust CSV parser (handles quoted fields, commas inside quotes, escaped quotes)
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/);
+  const result = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const cells = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === ',' && !inQ) {
+        cells.push(cur); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    cells.push(cur);
+    result.push(cells);
+  }
+  return result;
+}
+
 createApp({
   setup() {
     const entries    = ref(loadEntries());
@@ -188,41 +274,183 @@ createApp({
     const lastSaved  = ref('');
     const toasts     = ref([]);
     const titleInput = ref(null);
+    const fileInput  = ref(null);
     const form       = ref({ title: '', category: '', tags: [] });
 
+    // ── Import state ──
+    const importFile     = ref(null);
+    const importDragover = ref(false);
+    const importProgress = ref(0);
+    const lastImportId   = ref(null);
+
+    function onImportFileChange(e) {
+      const f = e.target.files[0];
+      if (f) { importFile.value = f; lastImportId.value = null; }
+    }
+
+    function onImportDrop(e) {
+      importDragover.value = false;
+      const f = e.dataTransfer.files[0];
+      if (f && f.name.toLowerCase().endsWith('.csv')) {
+        importFile.value = f; lastImportId.value = null;
+      } else {
+        showToast('Please drop a .csv file', 'error');
+      }
+    }
+
+    function clearImportFile() {
+      importFile.value = null;
+      importProgress.value = 0;
+      if (fileInput.value) fileInput.value.value = '';
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // localStorage can hold ~5 MB total. Each cell averages ~10 chars.
+    // Cap at 500 rows × 30 cols = 15 000 cells ≈ ~150 KB JSON — safely under quota.
+    const MAX_ROWS = 500;
+    const MAX_COLS = 30;
+
+    function runImport() {
+      if (!importFile.value) return;
+
+      // Guard: warn if raw file is already huge (> 2 MB raw text will blow quota after JSON serialisation)
+      if (importFile.value.size > 2 * 1024 * 1024) {
+        showToast(
+          `File is ${formatFileSize(importFile.value.size)} — only the first ${MAX_ROWS} rows × ${MAX_COLS} cols will be imported to stay within browser storage limits.`,
+          'info'
+        );
+      }
+
+      importProgress.value = 5;
+      lastImportId.value = null;
+
+      const reader = new FileReader();
+
+      reader.onload = (ev) => {
+        const tick = setInterval(() => {
+          if (importProgress.value < 80) importProgress.value += 15;
+        }, 80);
+
+        setTimeout(() => {
+          clearInterval(tick);
+          try {
+            const grid    = parseCSV(ev.target.result);
+            const rawRows = grid.length;
+            const rawCols = grid.reduce((m, r) => Math.max(m, r.length), 0);
+
+            // Hard-cap to prevent localStorage quota errors
+            const rows = Math.min(rawRows, MAX_ROWS);
+            const cols = Math.min(rawCols, MAX_COLS);
+            const trimmed = rawRows > MAX_ROWS || rawCols > MAX_COLS;
+
+            // Pad / trim every row to `cols` width, take only `rows` rows
+            const data = grid.slice(0, rows).map(r => {
+              const p = r.slice(0, cols);
+              while (p.length < cols) p.push('');
+              return p;
+            });
+
+            // Auto-detect category from file extension
+            const ext      = importFile.value.name.split('.').pop().toLowerCase();
+            const category = ext === 'csv' ? 'CSV' : 'Excel';
+            const title    = importFile.value.name.replace(/\.[^.]+$/, '');
+
+            // Remove any previous duplicate import with the same title so we
+            // don't stack up ghost entries when re-importing the same file
+            const existingIdx = entries.value.findIndex(
+              e => e.title === title && e.tags.includes('imported')
+            );
+            if (existingIdx !== -1) {
+              entries.value.splice(existingIdx, 1);
+            }
+
+            // Create a fresh inventory entry
+            const newEntry = {
+              id: nextId(entries.value),
+              title,
+              category,
+              tags: ['imported'],
+              createdAt: Date.now()
+            };
+            entries.value.unshift(newEntry);
+            saveEntries(entries.value);
+
+            // Attempt to save sheet; catch quota errors gracefully
+            try {
+              const sheets = loadSheets();
+              sheets[newEntry.id] = { rows, cols, data };
+              saveSheets(sheets);
+            } catch (qErr) {
+              // Quota still exceeded — trim to first 100 rows and retry
+              const safeRows = Math.min(rows, 100);
+              const safeData = data.slice(0, safeRows);
+              try {
+                const sheets = loadSheets();
+                sheets[newEntry.id] = { rows: safeRows, cols, data: safeData };
+                saveSheets(sheets);
+                showToast(`Storage full — only first 100 rows saved out of ${rawRows}.`, 'info');
+              } catch {
+                showToast('Browser storage is full. Please delete old entries first.', 'error');
+                // Roll back the entry we just added
+                entries.value.shift();
+                saveEntries(entries.value);
+                importProgress.value = 0;
+                return;
+              }
+            }
+
+            importProgress.value = 100;
+            lastImportId.value   = newEntry.id;
+
+            const note = trimmed ? ` (capped at ${rows} rows × ${cols} cols)` : '';
+            showToast(`"${title}" imported — ${rows} rows × ${cols} cols${note}`, 'success');
+
+            setTimeout(() => {
+              importProgress.value = 0;
+              clearImportFile();
+            }, 900);
+
+          } catch (err) {
+            importProgress.value = 0;
+            showToast('Parse error: ' + err.message, 'error');
+          }
+        }, 350);
+      };
+
+      reader.onerror = () => {
+        importProgress.value = 0;
+        showToast('Could not read the file', 'error');
+      };
+
+      reader.readAsText(importFile.value, 'UTF-8');
+    }
+
+    // ── Form helpers ──
     function stepClass(n) {
-      if (n === 1) return form.value.title    ? 'done' : 'active';
-      if (n === 2) return form.value.category ? 'done' : (form.value.title    ? 'active' : '');
-      if (n === 3) return form.value.tags.length ? 'done' : (form.value.category ? 'active' : '');
+      if (n === 1) return form.value.title        ? 'done' : 'active';
+      if (n === 2) return form.value.category     ? 'done' : (form.value.title    ? 'active' : '');
+      if (n === 3) return form.value.tags.length  ? 'done' : (form.value.category ? 'active' : '');
     }
-
-    function catColor(name) {
-      return (categories.value.find(c => c.name === name) || {}).color || '#94a3b8';
-    }
-
-    function catIcon(name) {
-      const m = { CSV: '📄', Excel: '📊' };
-      return m[name] || '🏷';
-    }
-
+    function catColor(name) { return (categories.value.find(c => c.name === name) || {}).color || '#94a3b8'; }
+    function catIcon(name)  { return { CSV: '📄', Excel: '📊' }[name] || '🏷'; }
     function getPillClass(t) {
-      const m = { csv: 'pill-csv', excel: 'pill-excel' };
-      return 'pill ' + (m[t.toLowerCase()] || 'pill-other');
+      return 'pill ' + ({ csv: 'pill-csv', excel: 'pill-excel' }[t.toLowerCase()] || 'pill-other');
     }
-
     function addTag() {
       const val = tagInput.value.trim().replace(/,+$/, '');
       if (val && !form.value.tags.includes(val)) form.value.tags.push(val);
       tagInput.value = '';
     }
-
     function removeTag(i) { form.value.tags.splice(i, 1); }
-
     function onTagKeydown(e) {
       if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); }
       else if (e.key === 'Backspace' && !tagInput.value && form.value.tags.length) form.value.tags.pop();
     }
-
     function addEntry() {
       if (!form.value.title.trim()) {
         const el = titleInput.value;
@@ -231,29 +459,16 @@ createApp({
         el.addEventListener('input', () => el.setCustomValidity(''), { once: true });
         return;
       }
-      if (!form.value.category) {
-        showToast('Please select a category', 'error');
-        return;
-      }
+      if (!form.value.category) { showToast('Please select a category', 'error'); return; }
       if (tagInput.value.trim()) addTag();
-      const entry = {
-        id: nextId(entries.value),
-        ...JSON.parse(JSON.stringify(form.value)),
-        createdAt: Date.now()
-      };
+      const entry = { id: nextId(entries.value), ...JSON.parse(JSON.stringify(form.value)), createdAt: Date.now() };
       entries.value.unshift(entry);
       saveEntries(entries.value);
       lastSaved.value = new Date().toLocaleTimeString();
       showToast(`"${entry.title}" saved!`, 'success');
       resetForm();
     }
-
-    function resetForm() {
-      form.value = { title: '', category: '', tags: [] };
-      tagInput.value = '';
-      catOpen.value  = false;
-    }
-
+    function resetForm() { form.value = { title: '', category: '', tags: [] }; tagInput.value = ''; catOpen.value = false; }
     function showToast(msg, type = 'info') {
       const id = Date.now();
       toasts.value.push({ id, msg, type });
@@ -263,10 +478,12 @@ createApp({
     const recentEntries = computed(() => entries.value.slice(0, 5));
 
     return {
-      entries, categories, catOpen, tagInput, lastSaved, toasts, form, titleInput,
+      entries, categories, catOpen, tagInput, lastSaved, toasts, form, titleInput, fileInput,
       stepClass, catColor, catIcon, getPillClass,
       addTag, removeTag, onTagKeydown, addEntry, resetForm,
-      recentEntries, formatDate
+      recentEntries, formatDate,
+      importFile, importDragover, importProgress, lastImportId,
+      onImportFileChange, onImportDrop, clearImportFile, formatFileSize, runImport,
     };
   },
   directives: {

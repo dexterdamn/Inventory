@@ -46,7 +46,6 @@
           <span class="search-icon">🔍</span>
           <input class="search-input" v-model="search" placeholder="Search entries..." />
         </div>
-       
       </div>
     </div>
 
@@ -58,7 +57,6 @@
           <div class="stat-num">{{ entriesWithSheet.length }}</div>
           <div class="stat-label">Total Data</div>
         </div>
-       
       </div>
 
       <!-- Category filter -->
@@ -77,9 +75,10 @@
         <div class="render-empty-icon">📭</div>
         <div class="render-empty-title">No saved sheet data yet</div>
         <div class="render-empty-sub">
-          Go to <a href="inventory.html" style="color:var(--accent);font-weight:700">Inventory</a>,
-          click a title to open its Excel sheet,<br>
-          fill in some data, then click <strong>💾 Save</strong>.<br>
+          Go to <a href="index.html" style="color:var(--accent);font-weight:700">Add Entry</a>
+          and use <strong>Import Observations</strong> to upload a CSV,<br>
+          or go to <a href="inventory.html" style="color:var(--accent);font-weight:700">Inventory</a>,
+          open any entry's sheet, fill in data and click <strong>💾 Save</strong>.<br>
           It will appear here automatically.
         </div>
       </div>
@@ -226,7 +225,6 @@ createApp({
       return (categories.value.find(c => c.name === name) || {}).color || '#94a3b8';
     }
 
-    // Get saved sheet data for an entry (safe fallback)
     function sheetData(id) {
       const s = sheets.value[id];
       if (!s) return { rows: 0, cols: 0, data: [] };
@@ -245,7 +243,6 @@ createApp({
       return s.data.reduce((total, row) => total + row.filter(c => c && c.trim()).length, 0);
     }
 
-    // Only entries that have a saved sheet
     const entriesWithSheet = computed(() =>
       entries.value.filter(e => sheets.value[e.id] && sheets.value[e.id].data)
     );
@@ -267,8 +264,7 @@ createApp({
     const uniqueCategories = computed(() => new Set(entries.value.map(e => e.category)).size);
 
     function openSheet(entry) {
-      // Re-read sheets in case inventory updated them
-      sheets.value = loadSheets();
+      sheets.value = loadSheets(); // re-read in case import updated them
       viewEntry.value = entry;
     }
 
@@ -283,9 +279,7 @@ createApp({
       const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
-      a.href = url;
-      a.download = entry.title.replace(/\s+/g, '_') + '.csv';
-      a.click();
+      a.href = url; a.download = entry.title.replace(/\s+/g, '_') + '.csv'; a.click();
       URL.revokeObjectURL(url);
       showToast('CSV exported!', 'success');
     }

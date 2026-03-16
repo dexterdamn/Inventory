@@ -315,3 +315,243 @@ body {
 .recent-name  { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .recent-cat   { font-size: 11px; color: var(--text3); margin-top: 1px; }
 .recent-tags  { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* ── IMPORT CARD ── */
+.import-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-s);
+  padding: 28px 32px;
+  max-width: 600px;
+  margin-top: 20px;
+  margin-bottom: 4px;
+}
+
+.import-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.import-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.import-icon {
+  width: 28px;
+  height: 28px;
+  background: var(--accent-s);
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.import-card-sub {
+  font-size: 12px;
+  color: var(--text3);
+  line-height: 1.5;
+}
+
+.import-card-sub a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.import-card-sub a:hover { text-decoration: underline; }
+
+/* Drop zone */
+.import-dropzone {
+  border: 2px dashed var(--border2);
+  border-radius: var(--radius-s);
+  padding: 32px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.18s, background 0.18s;
+  background: var(--surface2);
+  position: relative;
+}
+
+.import-dropzone:hover,
+.import-dropzone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-s);
+}
+
+.import-dropzone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.import-drop-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+
+.import-drop-text {
+  font-size: 13px;
+  color: var(--text2);
+  font-weight: 500;
+}
+
+.import-drop-text span {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.import-drop-hint {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 5px;
+}
+
+/* Selected file row */
+.import-file-selected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 10px 14px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text);
+  animation: popIn 0.14s ease;
+}
+
+.import-file-selected .file-icon { font-size: 18px; flex-shrink: 0; }
+
+.import-file-name {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-file-size {
+  font-size: 11px;
+  color: var(--text3);
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.import-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text3);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.import-remove:hover { color: var(--danger); }
+
+/* Progress bar */
+.import-progress {
+  margin-top: 14px;
+  background: var(--surface3);
+  border-radius: 99px;
+  height: 5px;
+  overflow: hidden;
+}
+
+.import-progress-bar {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent), #818cf8);
+  transition: width 0.28s ease;
+}
+
+.import-status {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 5px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Import action buttons */
+.import-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.btn-import {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-s);
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: background 0.16s, transform 0.16s, box-shadow 0.16s, opacity 0.16s;
+  text-decoration: none;
+}
+
+.btn-import:not(:disabled):hover {
+  background: var(--accent-h);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(79,110,247,.35);
+}
+
+.btn-import:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn-import:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* "View in Render View" link that appears after a successful import */
+.btn-import-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 6px 14px;
+  border: 1.5px solid var(--accent-s);
+  border-radius: var(--radius-s);
+  background: var(--accent-s);
+  transition: background 0.14s, border-color 0.14s;
+  animation: popIn 0.18s ease;
+}
+
+.btn-import-link:hover {
+  background: #dde3fd;
+  border-color: #c7d0fb;
+}

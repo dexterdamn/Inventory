@@ -46,7 +46,6 @@
           <span class="search-icon">🔍</span>
           <input class="search-input" v-model="search" placeholder="Search title, tag, category..." />
         </div>
-       
       </div>
     </div>
 
@@ -56,8 +55,8 @@
       <div class="stats-row">
         <div class="stat-card"><div class="stat-num">{{ entries.length }}</div><div class="stat-label">Total Records</div></div>
         <div class="stat-card"><div class="stat-num">{{ totalTags }}</div><div class="stat-label">Total Tags</div></div>
-        <div class="stat-card"><div class="stat-num">{{ uniqueCats }}</div><div class="stat-label">Categories</div></div>
-        </div>
+     
+      </div>
 
       <!-- Filter chips -->
       <div class="filter-row">
@@ -297,12 +296,10 @@ function saveSheets(data) {
   localStorage.setItem(SHEET_STORE, JSON.stringify(data));
 }
 
-// Build an empty grid rows×cols
 function makeGrid(rows, cols) {
   return Array.from({ length: rows }, () => Array(cols).fill(''));
 }
 
-// Resize grid preserving existing data
 function resizeGridData(old, rows, cols) {
   return Array.from({ length: rows }, (_, r) =>
     Array.from({ length: cols }, (_, c) => (old[r] && old[r][c] !== undefined) ? old[r][c] : '')
@@ -324,18 +321,16 @@ createApp({
     const sortDir       = ref('desc');
     const toasts        = ref([]);
 
-    // ── Sheet modal state ──
     const sheetEntry  = ref(null);
     const gridRows    = ref(DEFAULT_ROWS);
     const gridCols    = ref(DEFAULT_COLS);
     const gridData    = ref([]);
-    const activeCell  = ref(null);   // [ri, ci]
+    const activeCell  = ref(null);
     const isDirty     = ref(false);
     const justSaved   = ref(false);
     const sheetsStore = ref(loadSheets());
-    const cellRefs    = {};           // { 'ri-ci': inputEl }
+    const cellRefs    = {};
 
-    // ── Helpers ──
     function catColor(name) {
       return (categories.value.find(c => c.name === name) || {}).color || '#94a3b8';
     }
@@ -352,7 +347,6 @@ createApp({
       if (el) cellRefs[ri + '-' + ci] = el;
     }
 
-    // ── Open / Close sheet ──
     function openSheet(entry) {
       sheetEntry.value = entry;
       const saved = sheetsStore.value[entry.id];
@@ -375,7 +369,6 @@ createApp({
       activeCell.value = null;
     }
 
-    // ── Grid mutations ──
     function updateCell(ri, ci, val) {
       gridData.value[ri][ci] = val;
       isDirty.value  = true;
@@ -385,36 +378,24 @@ createApp({
     function resizeGrid() {
       const r = Math.max(1, Math.min(200, gridRows.value || DEFAULT_ROWS));
       const c = Math.max(1, Math.min(26,  gridCols.value || DEFAULT_COLS));
-      gridRows.value = r;
-      gridCols.value = c;
+      gridRows.value = r; gridCols.value = c;
       gridData.value = resizeGridData(gridData.value, r, c);
       isDirty.value  = true;
     }
 
-    function addRow() {
-      gridRows.value++;
-      gridData.value.push(Array(gridCols.value).fill(''));
-      isDirty.value = true;
-    }
-
+    function addRow() { gridRows.value++; gridData.value.push(Array(gridCols.value).fill('')); isDirty.value = true; }
     function addCol() {
       if (gridCols.value >= 26) return;
       gridCols.value++;
       gridData.value.forEach(row => row.push(''));
       isDirty.value = true;
     }
+    function clearGrid() { gridData.value = makeGrid(gridRows.value, gridCols.value); isDirty.value = true; }
 
-    function clearGrid() {
-      gridData.value = makeGrid(gridRows.value, gridCols.value);
-      isDirty.value  = true;
-    }
-
-    // ── Save ──
     function saveGrid() {
       if (!sheetEntry.value) return;
       sheetsStore.value[sheetEntry.value.id] = {
-        rows: gridRows.value,
-        cols: gridCols.value,
+        rows: gridRows.value, cols: gridCols.value,
         data: gridData.value.map(r => [...r])
       };
       saveSheets(sheetsStore.value);
@@ -424,7 +405,6 @@ createApp({
       setTimeout(() => { justSaved.value = false; }, 3000);
     }
 
-    // ── Export CSV ──
     function exportCSV() {
       if (!sheetEntry.value) return;
       const lines = gridData.value.map(row =>
@@ -433,28 +413,18 @@ createApp({
       const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
-      a.href = url;
-      a.download = sheetEntry.value.title.replace(/\s+/g, '_') + '.csv';
-      a.click();
+      a.href = url; a.download = sheetEntry.value.title.replace(/\s+/g, '_') + '.csv'; a.click();
       URL.revokeObjectURL(url);
       showToast('CSV exported!', 'success');
     }
 
-    // ── Cell navigation ──
-    function setActive(ri, ci) {
-      activeCell.value = [ri, ci];
-    }
-
+    function setActive(ri, ci) { activeCell.value = [ri, ci]; }
     function moveCell(ri, ci, dr, dc) {
       const nr = Math.min(gridRows.value - 1, Math.max(0, ri + dr));
       const nc = Math.min(gridCols.value - 1, Math.max(0, ci + dc));
       activeCell.value = [nr, nc];
-      nextTick(() => {
-        const el = cellRefs[nr + '-' + nc];
-        if (el) el.focus();
-      });
+      nextTick(() => { const el = cellRefs[nr + '-' + nc]; if (el) el.focus(); });
     }
-
     function onGridKeydown(e) {
       if (!activeCell.value) return;
       const [ri, ci] = activeCell.value;
@@ -464,7 +434,6 @@ createApp({
       if (e.key === 'ArrowLeft')  { e.preventDefault(); moveCell(ri, ci, 0, -1); }
     }
 
-    // ── Inventory helpers ──
     function setSort(f) {
       if (sortField.value === f) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
       else { sortField.value = f; sortDir.value = 'asc'; }
@@ -513,14 +482,9 @@ createApp({
       entries.value = entries.value.filter(e => !selected.value.includes(e.id));
       saveEntries(entries.value);
       showToast(selected.value.length + ' entries deleted', 'info');
-      selected.value = [];
-      confirmDelete.value = false;
+      selected.value = []; confirmDelete.value = false;
     }
-    function startEdit(e) {
-      editEntry.value = JSON.parse(JSON.stringify(e));
-      editCatOpen.value = false;
-      editTagInput.value = '';
-    }
+    function startEdit(e) { editEntry.value = JSON.parse(JSON.stringify(e)); editCatOpen.value = false; editTagInput.value = ''; }
     function onEditTagKey(ev) {
       if (ev.key === 'Enter' || ev.key === ',') {
         ev.preventDefault();
