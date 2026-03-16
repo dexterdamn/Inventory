@@ -6,40 +6,8 @@
 <title>Inventory — Add Entry</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="shared.css">
-<style>
-.add-card { padding: 28px; max-width: 600px; }
-.section-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+<link rel="stylesheet" href="style/index.css">
 
-.progress-steps { display: flex; align-items: center; gap: 0; margin-bottom: 28px; }
-.step { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--text3); }
-.step.done   { color: var(--success); }
-.step.active { color: var(--accent); }
-.step-num {
-  width: 24px; height: 24px; border-radius: 50%;
-  background: var(--surface3);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; flex-shrink: 0;
-}
-.step.done .step-num   { background: var(--success); color: #fff; }
-.step.active .step-num { background: var(--accent);  color: #fff; }
-.step-line { flex: 1; height: 1px; background: var(--border); margin: 0 8px; min-width: 20px; }
-
-.recent-list  { margin-top: 28px; }
-.recent-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text3); margin-bottom: 12px; }
-.recent-item  {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 14px;
-  background: var(--surface2); border: 1px solid var(--border);
-  border-radius: 9px; margin-bottom: 7px; transition: background 0.13s;
-}
-.recent-item:hover { background: var(--surface3); }
-.recent-icon  { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
-.recent-meta  { flex: 1; min-width: 0; }
-.recent-name  { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.recent-cat   { font-size: 11px; color: var(--text3); margin-top: 1px; }
-.recent-tags  { display: flex; flex-wrap: wrap; gap: 4px; }
-</style>
 </head>
 <body>
 <div id="app">
@@ -79,7 +47,7 @@
         <div class="topbar-title">Add New Entry</div>
         <div class="topbar-sub">Save a titled record with category and tags</div>
       </div>
-      <!-- <a href="inventory.html" class="btn btn-ghost btn-sm">View Inventory →</a> -->
+      
     </div>
 
     <div class="page">
@@ -207,7 +175,7 @@
 </div>
 </div>
 
-<script src="shared.js"></script>
+<script src="data.js"></script>
 <script>
 const { createApp, ref, computed } = Vue;
 

@@ -6,250 +6,9 @@
 <title>TagVault — Render View</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="shared.css">
-<style>
+<link rel="stylesheet" href="style/index.css">
+<link rel="stylesheet" href="style/render.css">
 
-/* ── ENTRY CARDS WITH SHEET DATA ── */
-.render-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
-  margin-bottom: 32px;
-}
-
-.render-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow-s);
-  cursor: pointer;
-  transition: all 0.18s;
-  position: relative;
-}
-.render-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-l);
-  border-color: var(--accent);
-}
-.render-card-top {
-  height: 5px;
-}
-.render-card-body { padding: 16px 18px 14px; }
-.render-card-title {
-  font-size: 15px; font-weight: 800;
-  color: var(--text); margin-bottom: 6px;
-  letter-spacing: -0.3px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.render-card-meta {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 10px;
-}
-.render-card-preview {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-  font-size: 10px;
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--text2);
-}
-.preview-row {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-}
-.preview-row:last-child { border-bottom: none; }
-.preview-cell {
-  padding: 3px 7px;
-  border-right: 1px solid var(--border);
-  flex: 1;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  min-width: 0;
-}
-.preview-cell:last-child { border-right: none; }
-.preview-cell.has-data { color: var(--text); font-weight: 600; }
-.preview-cell.empty    { color: var(--text3); }
-.preview-col-header {
-  background: #e8e8e8; color: #666;
-  font-weight: 700; font-size: 9px;
-  text-align: center;
-}
-
-.render-card-footer {
-  padding: 8px 18px;
-  background: var(--surface2);
-  border-top: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between;
-}
-.render-card-footer-left { font-size: 11px; color: var(--text3); }
-.render-card-open-btn {
-  font-size: 11px; font-weight: 700;
-  color: var(--accent); background: var(--accent-s);
-  border: none; border-radius: 5px;
-  padding: 4px 12px; cursor: pointer;
-  transition: background .14s;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-}
-.render-card-open-btn:hover { background: #dde5fe; }
-
-/* empty state for render */
-.render-empty {
-  text-align: center; padding: 72px 20px;
-  color: var(--text3);
-}
-.render-empty-icon { font-size: 52px; margin-bottom: 14px; }
-.render-empty-title { font-size: 18px; font-weight: 800; color: var(--text2); margin-bottom: 8px; }
-.render-empty-sub   { font-size: 13px; line-height: 1.6; }
-
-/* ══ EXCEL VIEW MODAL ══════════════════════════════════════════ */
-.excel-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 2000;
-  transition: background 0.25s ease;
-  pointer-events: none;
-}
-.excel-overlay.open {
-  background: rgba(10,14,26,0.62);
-  pointer-events: all;
-  backdrop-filter: blur(4px);
-}
-.excel-modal {
-  background: #fff;
-  border-radius: 14px;
-  width: 92vw; max-width: 1100px;
-  max-height: 88vh;
-  display: flex; flex-direction: column;
-  box-shadow: 0 24px 80px rgba(0,0,0,.3);
-  opacity: 0;
-  transform: scale(0.93) translateY(20px);
-  transition: opacity 0.25s ease, transform 0.25s ease;
-  overflow: hidden;
-}
-.excel-overlay.open .excel-modal {
-  opacity: 1;
-  transform: scale(1) translateY(0);
-}
-
-/* modal header */
-.excel-modal-header {
-  display: flex; align-items: center; gap: 12px;
-  padding: 16px 20px;
-  color: #fff; flex-shrink: 0;
-}
-.excel-modal-header.cat-csv   { background: #5b21b6; }
-.excel-modal-header.cat-excel { background: #1d6f42; }
-.excel-modal-title { font-size: 16px; font-weight: 800; flex: 1; }
-.excel-modal-cat   { font-size: 11px; font-weight: 700; background: rgba(255,255,255,.2); padding: 3px 10px; border-radius: 20px; }
-.excel-modal-close {
-  background: rgba(255,255,255,.15); border: none; color: #970c0c;
-  width: 30px; height: 30px; border-radius: 7px;
-  cursor: pointer; font-size: 16px;
-  display: flex; align-items: center; justify-content: center;
-  transition: background .15s;
-}
-.excel-modal-close:hover { background: rgba(236, 234, 234, 0.3); }
-
-/* info bar */
-.excel-info-bar {
-  display: flex; align-items: center; gap: 16px;
-  padding: 8px 16px;
-  background: #f3f3f3;
-  border-bottom: 1px solid #d0d0d0;
-  font-size: 12px; color: #555;
-  flex-shrink: 0;
-}
-.excel-info-bar strong { color: #333; }
-.excel-info-pill {
-  background: #fff; border: 1px solid #ddd;
-  padding: 2px 10px; border-radius: 20px;
-  font-size: 11px; font-family: 'JetBrains Mono', monospace;
-  color: #666;
-}
-.excel-export-btn {
-  margin-left: auto;
-  padding: 5px 14px; border-radius: 5px;
-  border: 1px solid #bbb; background: #fff;
-  font-size: 12px; font-weight: 600; color: #333;
-  cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif;
-  transition: all .14s;
-}
-.excel-export-btn:hover { background: #e8e8e8; }
-
-/* grid */
-.excel-scroll {
-  flex: 1; overflow: auto;
-}
-.excel-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
-.excel-scroll::-webkit-scrollbar-track { background: #f0f0f0; }
-.excel-scroll::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 4px; }
-
-.excel-table {
-  border-collapse: collapse;
-  min-width: 100%;
-  font-size: 13px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  table-layout: fixed;
-}
-.excel-table .col-num-header {
-  position: sticky; top: 0; left: 0; z-index: 4;
-  background: #e8e8e8;
-  border: 1px solid #bbb;
-  width: 46px; min-width: 46px;
-  text-align: center;
-  font-size: 11px; color: #777; font-weight: 700;
-  padding: 5px 0;
-}
-.excel-table thead th {
-  position: sticky; top: 0; z-index: 3;
-  background: #e8e8e8;
-  border: 1px solid #bbb;
-  padding: 5px 10px;
-  font-size: 12px; font-weight: 700; color: #444;
-  text-align: center;
-  white-space: nowrap;
-  user-select: none;
-}
-.excel-table .row-num-cell {
-  position: sticky; left: 0; z-index: 2;
-  background: #e8e8e8;
-  border: 1px solid #bbb;
-  width: 46px; min-width: 46px;
-  text-align: center;
-  font-size: 11px; color: #777;
-  font-family: 'JetBrains Mono', monospace;
-  padding: 4px 0;
-  user-select: none;
-}
-.excel-table td.data-cell {
-  border: 1px solid #d0d0d0;
-  padding: 5px 10px;
-  min-width: 120px;
-  height: 28px;
-  background: #fff;
-  font-size: 13px; color: #1a1a1a;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.excel-table td.data-cell.has-data { font-weight: 500; }
-.excel-table td.data-cell.empty    { color: #ccc; }
-.excel-table tbody tr:nth-child(even) td.data-cell { background: #fafafa; }
-.excel-table tbody tr:hover td.data-cell { background: #f0f5ff; }
-.excel-table tbody tr:hover td.row-num-cell { background: #d8d8d8; }
-
-/* read-only badge */
-.readonly-badge {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
-  text-transform: uppercase;
-  background: rgba(255,255,255,.2); color: rgba(255,255,255,.85);
-  border: 1px solid rgba(255,255,255,.3);
-  padding: 2px 8px; border-radius: 4px;
-}
-
-/* stats row tweaks */
-.stats-row { margin-bottom: 24px; }
-</style>
 </head>
 <body>
 <div id="app">
@@ -280,14 +39,14 @@
     <div class="topbar">
       <div>
         <div class="topbar-title">Render View</div>
-        <!--  -->
+        <div class="topbar-sub">Entries with saved table data — click to view</div>
       </div>
       <div class="flex gap-8 items-center">
         <div class="search-wrap">
           <span class="search-icon">🔍</span>
           <input class="search-input" v-model="search" placeholder="Search entries..." />
         </div>
-        <!-- <a href="inventory.html" class="btn btn-ghost btn-sm">Go to Inventory →</a> -->
+       
       </div>
     </div>
 
@@ -299,7 +58,6 @@
           <div class="stat-num">{{ entriesWithSheet.length }}</div>
           <div class="stat-label">Total Data</div>
         </div>
-        
        
       </div>
 
@@ -437,7 +195,7 @@
 </div>
 </div>
 
-<script src="shared.js"></script>
+<script src="data.js"></script>
 <script>
 const { createApp, ref, computed } = Vue;
 
