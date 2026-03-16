@@ -8,64 +8,247 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shared.css">
 <style>
-.table-head-render { grid-template-columns: 2.5fr 1.3fr 2fr 1fr; }
-.table-row-render  { grid-template-columns: 2.5fr 1.3fr 2fr 1fr; }
 
-/* Category breakdown cards */
-.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 28px; }
-.cat-card {
+/* ── ENTRY CARDS WITH SHEET DATA ── */
+.render-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.render-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px 18px;
+  overflow: hidden;
   box-shadow: var(--shadow-s);
   cursor: pointer;
-  transition: all 0.16s;
-  position: relative; overflow: hidden;
+  transition: all 0.18s;
+  position: relative;
 }
-.cat-card::before {
-  content: '';
-  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+.render-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-l);
+  border-color: var(--accent);
 }
-.cat-card:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
-.cat-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,110,247,.12); }
-.cat-card-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text2); margin-bottom: 8px; }
-.cat-card-num { font-size: 28px; font-weight: 800; letter-spacing: -1.5px; font-family: 'JetBrains Mono', monospace; color: var(--text); }
-.cat-card-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
-
-/* Tag cloud */
-.tag-cloud {
-  background: var(--surface);
+.render-card-top {
+  height: 5px;
+}
+.render-card-body { padding: 16px 18px 14px; }
+.render-card-title {
+  font-size: 15px; font-weight: 800;
+  color: var(--text); margin-bottom: 6px;
+  letter-spacing: -0.3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.render-card-meta {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px;
+}
+.render-card-preview {
+  background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 24px;
-  box-shadow: var(--shadow-s);
-}
-.tag-cloud-title { font-size: 13px; font-weight: 700; color: var(--text2); margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.6px; }
-.tag-cloud-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
-.tag-cloud-item {
-  padding: 5px 14px; border-radius: 20px;
-  background: var(--surface2); border: 1px solid var(--border);
-  font-size: 13px; font-weight: 600; color: var(--text2);
-  cursor: pointer; transition: all 0.14s;
-  display: flex; align-items: center; gap: 6px;
-}
-.tag-cloud-item:hover { background: var(--accent-s); color: var(--accent); border-color: var(--accent); }
-.tag-cloud-item.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-.tag-count {
-  background: rgba(0,0,0,.1);
-  border-radius: 10px; padding: 0 6px;
-  font-size: 10px; font-weight: 700;
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 10px;
   font-family: 'JetBrains Mono', monospace;
+  color: var(--text2);
 }
-.tag-cloud-item.active .tag-count { background: rgba(255,255,255,.25); }
+.preview-row {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.preview-row:last-child { border-bottom: none; }
+.preview-cell {
+  padding: 3px 7px;
+  border-right: 1px solid var(--border);
+  flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
+}
+.preview-cell:last-child { border-right: none; }
+.preview-cell.has-data { color: var(--text); font-weight: 600; }
+.preview-cell.empty    { color: var(--text3); }
+.preview-col-header {
+  background: #e8e8e8; color: #666;
+  font-weight: 700; font-size: 9px;
+  text-align: center;
+}
 
-/* Export bar */
-.export-bar {
-  display: flex; gap: 10px; align-items: center;
-  margin-bottom: 20px;
+.render-card-footer {
+  padding: 8px 18px;
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
 }
+.render-card-footer-left { font-size: 11px; color: var(--text3); }
+.render-card-open-btn {
+  font-size: 11px; font-weight: 700;
+  color: var(--accent); background: var(--accent-s);
+  border: none; border-radius: 5px;
+  padding: 4px 12px; cursor: pointer;
+  transition: background .14s;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.render-card-open-btn:hover { background: #dde5fe; }
+
+/* empty state for render */
+.render-empty {
+  text-align: center; padding: 72px 20px;
+  color: var(--text3);
+}
+.render-empty-icon { font-size: 52px; margin-bottom: 14px; }
+.render-empty-title { font-size: 18px; font-weight: 800; color: var(--text2); margin-bottom: 8px; }
+.render-empty-sub   { font-size: 13px; line-height: 1.6; }
+
+/* ══ EXCEL VIEW MODAL ══════════════════════════════════════════ */
+.excel-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2000;
+  transition: background 0.25s ease;
+  pointer-events: none;
+}
+.excel-overlay.open {
+  background: rgba(10,14,26,0.62);
+  pointer-events: all;
+  backdrop-filter: blur(4px);
+}
+.excel-modal {
+  background: #fff;
+  border-radius: 14px;
+  width: 92vw; max-width: 1100px;
+  max-height: 88vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0,0,0,.3);
+  opacity: 0;
+  transform: scale(0.93) translateY(20px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  overflow: hidden;
+}
+.excel-overlay.open .excel-modal {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+/* modal header */
+.excel-modal-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 20px;
+  color: #fff; flex-shrink: 0;
+}
+.excel-modal-header.cat-csv   { background: #5b21b6; }
+.excel-modal-header.cat-excel { background: #1d6f42; }
+.excel-modal-title { font-size: 16px; font-weight: 800; flex: 1; }
+.excel-modal-cat   { font-size: 11px; font-weight: 700; background: rgba(255,255,255,.2); padding: 3px 10px; border-radius: 20px; }
+.excel-modal-close {
+  background: rgba(255,255,255,.15); border: none; color: #970c0c;
+  width: 30px; height: 30px; border-radius: 7px;
+  cursor: pointer; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.excel-modal-close:hover { background: rgba(236, 234, 234, 0.3); }
+
+/* info bar */
+.excel-info-bar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 8px 16px;
+  background: #f3f3f3;
+  border-bottom: 1px solid #d0d0d0;
+  font-size: 12px; color: #555;
+  flex-shrink: 0;
+}
+.excel-info-bar strong { color: #333; }
+.excel-info-pill {
+  background: #fff; border: 1px solid #ddd;
+  padding: 2px 10px; border-radius: 20px;
+  font-size: 11px; font-family: 'JetBrains Mono', monospace;
+  color: #666;
+}
+.excel-export-btn {
+  margin-left: auto;
+  padding: 5px 14px; border-radius: 5px;
+  border: 1px solid #bbb; background: #fff;
+  font-size: 12px; font-weight: 600; color: #333;
+  cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all .14s;
+}
+.excel-export-btn:hover { background: #e8e8e8; }
+
+/* grid */
+.excel-scroll {
+  flex: 1; overflow: auto;
+}
+.excel-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.excel-scroll::-webkit-scrollbar-track { background: #f0f0f0; }
+.excel-scroll::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 4px; }
+
+.excel-table {
+  border-collapse: collapse;
+  min-width: 100%;
+  font-size: 13px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  table-layout: fixed;
+}
+.excel-table .col-num-header {
+  position: sticky; top: 0; left: 0; z-index: 4;
+  background: #e8e8e8;
+  border: 1px solid #bbb;
+  width: 46px; min-width: 46px;
+  text-align: center;
+  font-size: 11px; color: #777; font-weight: 700;
+  padding: 5px 0;
+}
+.excel-table thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: #e8e8e8;
+  border: 1px solid #bbb;
+  padding: 5px 10px;
+  font-size: 12px; font-weight: 700; color: #444;
+  text-align: center;
+  white-space: nowrap;
+  user-select: none;
+}
+.excel-table .row-num-cell {
+  position: sticky; left: 0; z-index: 2;
+  background: #e8e8e8;
+  border: 1px solid #bbb;
+  width: 46px; min-width: 46px;
+  text-align: center;
+  font-size: 11px; color: #777;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 4px 0;
+  user-select: none;
+}
+.excel-table td.data-cell {
+  border: 1px solid #d0d0d0;
+  padding: 5px 10px;
+  min-width: 120px;
+  height: 28px;
+  background: #fff;
+  font-size: 13px; color: #1a1a1a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.excel-table td.data-cell.has-data { font-weight: 500; }
+.excel-table td.data-cell.empty    { color: #ccc; }
+.excel-table tbody tr:nth-child(even) td.data-cell { background: #fafafa; }
+.excel-table tbody tr:hover td.data-cell { background: #f0f5ff; }
+.excel-table tbody tr:hover td.row-num-cell { background: #d8d8d8; }
+
+/* read-only badge */
+.readonly-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: rgba(255,255,255,.2); color: rgba(255,255,255,.85);
+  border: 1px solid rgba(255,255,255,.3);
+  padding: 2px 8px; border-radius: 4px;
+}
+
+/* stats row tweaks */
+.stats-row { margin-bottom: 24px; }
 </style>
 </head>
 <body>
@@ -77,28 +260,19 @@
     <div class="sidebar-brand">
       <div class="brand-logo">
         <div class="brand-icon">🏷</div>
-        <div>
-          <div class="brand-name">TagVault</div>
-          <div class="brand-sub">Tag Management</div>
-        </div>
+        <div><div class="brand-name">TagVault</div><div class="brand-sub">Tag Management</div></div>
       </div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Pages</div>
-      <a href="index.html" class="nav-link">
-        <span class="nav-icon">✚</span> Add Entry
-      </a>
+      <a href="index.html" class="nav-link"><span class="nav-icon">✚</span> Add Entry</a>
       <a href="inventory.html" class="nav-link">
         <span class="nav-icon">📦</span> Inventory
         <span class="nav-badge">{{ entries.length }}</span>
       </a>
-      <a href="render.html" class="nav-link active">
-        <span class="nav-icon">📊</span> Render View
-      </a>
+      <a href="render.html" class="nav-link active"><span class="nav-icon">📊</span> Render View</a>
     </div>
-    <div class="sidebar-footer">
-      {{ entries.length }} records · {{ uniqueCategories }} categories
-    </div>
+    <div class="sidebar-footer">{{ entriesWithSheet.length }} of {{ entries.length }} have sheet data</div>
   </aside>
 
   <!-- CONTENT -->
@@ -106,120 +280,158 @@
     <div class="topbar">
       <div>
         <div class="topbar-title">Render View</div>
-        <div class="topbar-sub">Overview, analytics, and full data table</div>
+        <!--  -->
       </div>
       <div class="flex gap-8 items-center">
-        <button class="btn btn-ghost btn-sm" @click="exportJSON">⬇ Export JSON</button>
-        <a href="index.html" class="btn btn-primary btn-sm"><span>✚</span> Add</a>
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input class="search-input" v-model="search" placeholder="Search entries..." />
+        </div>
+        <!-- <a href="inventory.html" class="btn btn-ghost btn-sm">Go to Inventory →</a> -->
       </div>
     </div>
 
     <div class="page">
 
-      <!-- Stats row -->
+      <!-- Stats -->
       <div class="stats-row">
         <div class="stat-card">
-          <div class="stat-num">{{ entries.length }}</div>
-          <div class="stat-label">Total Entries</div>
+          <div class="stat-num">{{ entriesWithSheet.length }}</div>
+          <div class="stat-label">Total Data</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-num">{{ uniqueCategories }}</div>
-          <div class="stat-label">Categories</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-num">{{ totalTags }}</div>
-          <div class="stat-label">Total Tags</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-num">{{ uniqueTagCount }}</div>
-          <div class="stat-label">Unique Tags</div>
+        
+       
+      </div>
+
+      <!-- Category filter -->
+      <div class="filter-row">
+        <div class="chip" :class="{active:catFilter===''}" @click="catFilter=''">All</div>
+        <div class="chip" v-for="c in categories" :key="c.name"
+          :class="{active:catFilter===c.name}"
+          @click="catFilter=catFilter===c.name?'':c.name">
+          <span style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle" :style="{background:c.color}"></span>
+          {{ c.name }}
         </div>
       </div>
 
-      <!-- Category cards -->
-      <div class="cat-grid">
-        <div class="cat-card" v-for="c in categoryStats" :key="c.name"
-          :class="{selected: activeCat===c.name}"
-          :style="{'border-top-color': c.color}"
-          @click="activeCat = activeCat===c.name ? '' : c.name">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <span class="cat-dot" :style="{background:c.color,width:'10px',height:'10px'}"></span>
-            <div class="cat-card-label">{{ c.name }}</div>
-          </div>
-          <div class="cat-card-num">{{ c.count }}</div>
-          <div class="cat-card-sub">{{ c.tagCount }} total tags</div>
+      <!-- ── EMPTY STATE: no entries have sheet data yet ── -->
+      <div class="render-empty" v-if="entriesWithSheet.length === 0">
+        <div class="render-empty-icon">📭</div>
+        <div class="render-empty-title">No saved sheet data yet</div>
+        <div class="render-empty-sub">
+          Go to <a href="inventory.html" style="color:var(--accent);font-weight:700">Inventory</a>,
+          click a title to open its Excel sheet,<br>
+          fill in some data, then click <strong>💾 Save</strong>.<br>
+          It will appear here automatically.
         </div>
       </div>
 
-      <!-- Tag cloud -->
-      <div class="tag-cloud" v-if="allTagFreq.length">
-        <div class="tag-cloud-title">Tag Cloud — click to filter</div>
-        <div class="tag-cloud-wrap">
-          <div class="tag-cloud-item"
-            v-for="t in allTagFreq.slice(0, 40)" :key="t.tag"
-            :class="{active: activeTag===t.tag}"
-            @click="activeTag = activeTag===t.tag ? '' : t.tag">
-            {{ t.tag }}
-            <span class="tag-count">{{ t.count }}</span>
-          </div>
-        </div>
+      <!-- ── EMPTY STATE: filter has no results ── -->
+      <div class="render-empty" v-else-if="filteredEntries.length === 0">
+        <div class="render-empty-icon">🔍</div>
+        <div class="render-empty-title">No matches</div>
+        <div class="render-empty-sub">Try a different search or filter.</div>
       </div>
 
-      <!-- Filter + Table -->
-      <div class="export-bar">
-        <div style="font-size:13px;font-weight:600;color:var(--text2)">
-          Showing <span style="color:var(--accent);font-family:'JetBrains Mono',monospace">{{ filteredEntries.length }}</span> of {{ entries.length }} entries
-          <span v-if="activeCat || activeTag" style="color:var(--text3)"> · filtered</span>
-        </div>
-        <div style="margin-left:auto;display:flex;gap:8px">
-          <button class="btn btn-ghost btn-sm" v-if="activeCat||activeTag" @click="activeCat='';activeTag=''">✕ Clear filters</button>
-        </div>
-      </div>
+      <!-- ── CARDS GRID ── -->
+      <div class="render-grid" v-else>
+        <div class="render-card" v-for="e in filteredEntries" :key="e.id" @click="openSheet(e)">
 
-      <div class="table-card">
-        <div class="table-head table-head-render">
-          <div class="th">Title</div>
-          <div class="th">Category</div>
-          <div class="th">Tags</div>
-          <div class="th">Date Added</div>
-        </div>
-        <div class="table-body">
-          <div v-if="filteredEntries.length===0" class="empty">
-            <div class="empty-icon">🗂</div>
-            <div class="empty-msg">No entries match the current filter</div>
-            <div class="empty-sub">
-              <span style="cursor:pointer;color:var(--accent)" @click="activeCat='';activeTag=''">Clear filters</span>
-              or <a href="index.html" style="color:var(--accent)">add new entries</a>
-            </div>
-          </div>
-          <div class="table-row table-row-render" v-for="e in filteredEntries" :key="e.id">
-            <div>
-              <div class="cell-title">{{ e.title }}</div>
-              <div class="cell-sub font-mono">ID #{{ e.id }}</div>
-            </div>
-            <div>
-              <span class="cat-badge" :style="{background: catColor(e.category)+'18', color: catColor(e.category)}">
-                {{ e.category }}
+          <!-- colour top bar -->
+          <div class="render-card-top" :style="{background: catColor(e.category)}"></div>
+
+          <div class="render-card-body">
+            <div class="render-card-title">{{ e.title }}</div>
+            <div class="render-card-meta">
+              <span class="cat-badge" :style="{background:catColor(e.category)+'18',color:catColor(e.category)}">{{ e.category }}</span>
+              <span style="font-size:11px;color:var(--text3)">
+                {{ sheetDimensions(e.id) }}
               </span>
+              <span class="pill pill-other" v-for="t in e.tags.slice(0,2)" :key="t" style="font-size:10px;padding:1px 7px">{{ t }}</span>
             </div>
-            <div class="tag-list">
-              <span class="pill" v-for="t in e.tags" :key="t" :class="getPillClass(t)"
-                style="font-size:11px;padding:2px 8px;cursor:pointer"
-                @click="activeTag = activeTag===t ? '' : t">
-                {{ t }}
-              </span>
+
+            <!-- Mini preview of the sheet (first 4 rows × 4 cols) -->
+            <div class="render-card-preview">
+              <!-- col headers A B C D -->
+              <div class="preview-row">
+                <div class="preview-cell preview-col-header" style="width:28px;flex:none;background:#d8d8d8;">#</div>
+                <div class="preview-cell preview-col-header" v-for="ci in Math.min(4, sheetData(e.id).cols)" :key="ci">
+                  {{ colLetter(ci-1) }}
+                </div>
+              </div>
+              <!-- data rows -->
+              <div class="preview-row" v-for="ri in Math.min(4, sheetData(e.id).rows)" :key="ri">
+                <div class="preview-cell preview-col-header" style="width:28px;flex:none;">{{ ri }}</div>
+                <div class="preview-cell"
+                  v-for="ci in Math.min(4, sheetData(e.id).cols)" :key="ci"
+                  :class="sheetData(e.id).data[ri-1] && sheetData(e.id).data[ri-1][ci-1] ? 'has-data' : 'empty'">
+                  {{ sheetData(e.id).data[ri-1] && sheetData(e.id).data[ri-1][ci-1] || '—' }}
+                </div>
+              </div>
             </div>
-            <div class="text-sm text-muted font-mono">{{ formatDate(e.createdAt) }}</div>
+          </div>
+
+          <div class="render-card-footer">
+            <div class="render-card-footer-left">{{ formatDate(e.createdAt) }}</div>
+            <button class="render-card-open-btn">View Sheet →</button>
           </div>
         </div>
       </div>
 
     </div>
   </div>
-
 </div>
 
-<!-- TOAST -->
+<!-- ══ EXCEL VIEW MODAL (Read-Only) ══════════════════════════════════ -->
+<div class="excel-overlay" :class="{open: viewEntry}" @click.self="closeSheet">
+  <div class="excel-modal" v-if="viewEntry">
+
+    <!-- Header -->
+    <div class="excel-modal-header" :class="'cat-'+viewEntry.category.toLowerCase()">
+      <span style="font-size:20px">📊</span>
+      <div class="excel-modal-title">{{ viewEntry.title }}</div>
+      <span class="excel-modal-cat">{{ viewEntry.category }}</span>
+      <span class="readonly-badge">Read-Only</span>
+      <button class="excel-modal-close" @click="closeSheet">✕</button>
+    </div>
+
+    <!-- Info bar -->
+    <div class="excel-info-bar">
+      <span><strong>{{ sheetData(viewEntry.id).rows }}</strong> rows</span>
+      <span>×</span>
+      <span><strong>{{ sheetData(viewEntry.id).cols }}</strong> columns</span>
+      <span class="excel-info-pill">{{ filledCells(viewEntry.id) }} cells with data</span>
+      <span class="excel-info-pill">Saved {{ formatDate(viewEntry.createdAt) }}</span>
+      <button class="excel-export-btn" @click="exportCSV(viewEntry)">⬇ Export CSV</button>
+      <a href="inventory.html" class="excel-export-btn" style="text-decoration:none;margin-left:4px">✏️ Edit in Inventory</a>
+    </div>
+
+    <!-- Read-only grid -->
+    <div class="excel-scroll">
+      <table class="excel-table">
+        <thead>
+          <tr>
+            <th class="col-num-header"></th>
+            <th v-for="ci in sheetData(viewEntry.id).cols" :key="ci">{{ colLetter(ci-1) }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(row, ri) in sheetData(viewEntry.id).data" :key="ri">
+            <td class="row-num-cell">{{ ri+1 }}</td>
+            <td v-for="(cell, ci) in row" :key="ci"
+              class="data-cell"
+              :class="cell ? 'has-data' : 'empty'">
+              {{ cell || '' }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- Toast -->
 <div class="toast-container">
   <div class="toast" v-for="t in toasts" :key="t.id" :class="t.type">{{ t.msg }}</div>
 </div>
@@ -228,68 +440,109 @@
 <script src="shared.js"></script>
 <script>
 const { createApp, ref, computed } = Vue;
+
+const SHEET_STORE = 'tagvault_sheets';
+
+function loadSheets() {
+  try { return JSON.parse(localStorage.getItem(SHEET_STORE)) || {}; }
+  catch { return {}; }
+}
+
+function colLetter(ci) {
+  let s = '', n = ci;
+  while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
+  return s;
+}
+
 createApp({
   setup() {
     const entries    = ref(loadEntries());
     const categories = ref(loadCategories());
-    const activeCat  = ref('');
-    const activeTag  = ref('');
+    const sheets     = ref(loadSheets());
+    const search     = ref('');
+    const catFilter  = ref('');
+    const viewEntry  = ref(null);
     const toasts     = ref([]);
 
-    function catColor(name) { return (categories.value.find(c=>c.name===name)||{}).color||'#94a3b8'; }
-    function getPillClass(t) {
-      const m={cv:'pill-cv',excel:'pill-excel',word:'pill-word',pdf:'pill-pdf'};
-      return 'pill '+(m[t.toLowerCase()]||'pill-other');
+    function catColor(name) {
+      return (categories.value.find(c => c.name === name) || {}).color || '#94a3b8';
     }
 
-    const totalTags        = computed(()=>entries.value.reduce((s,e)=>s+e.tags.length,0));
-    const uniqueCategories = computed(()=>new Set(entries.value.map(e=>e.category)).size);
-    const uniqueTagCount   = computed(()=>new Set(entries.value.flatMap(e=>e.tags)).size);
+    // Get saved sheet data for an entry (safe fallback)
+    function sheetData(id) {
+      const s = sheets.value[id];
+      if (!s) return { rows: 0, cols: 0, data: [] };
+      return s;
+    }
 
-    const categoryStats = computed(()=>
-      categories.value
-        .map(c=>({
-          ...c,
-          count: entries.value.filter(e=>e.category===c.name).length,
-          tagCount: entries.value.filter(e=>e.category===c.name).reduce((s,e)=>s+e.tags.length,0)
-        }))
-        .filter(c=>c.count>0)
+    function sheetDimensions(id) {
+      const s = sheets.value[id];
+      if (!s) return '';
+      return `${s.rows} × ${s.cols}`;
+    }
+
+    function filledCells(id) {
+      const s = sheets.value[id];
+      if (!s) return 0;
+      return s.data.reduce((total, row) => total + row.filter(c => c && c.trim()).length, 0);
+    }
+
+    // Only entries that have a saved sheet
+    const entriesWithSheet = computed(() =>
+      entries.value.filter(e => sheets.value[e.id] && sheets.value[e.id].data)
     );
 
-    const allTagFreq = computed(()=>{
-      const freq={};
-      entries.value.forEach(e=>e.tags.forEach(t=>{ freq[t]=(freq[t]||0)+1; }));
-      return Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([tag,count])=>({tag,count}));
-    });
-
-    const filteredEntries = computed(()=>{
-      let r = entries.value;
-      if (activeCat.value)  r = r.filter(e=>e.category===activeCat.value);
-      if (activeTag.value)  r = r.filter(e=>e.tags.includes(activeTag.value));
+    const filteredEntries = computed(() => {
+      let r = [...entriesWithSheet.value];
+      if (catFilter.value) r = r.filter(e => e.category === catFilter.value);
+      if (search.value.trim()) {
+        const q = search.value.toLowerCase();
+        r = r.filter(e =>
+          e.title.toLowerCase().includes(q) ||
+          e.category.toLowerCase().includes(q) ||
+          e.tags.some(t => t.toLowerCase().includes(q))
+        );
+      }
       return r;
     });
 
-    function exportJSON() {
-      const data = JSON.stringify(entries.value, null, 2);
-      const blob = new Blob([data], {type:'application/json'});
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = url; a.download = 'tagvault-export.json';
-      a.click(); URL.revokeObjectURL(url);
-      showToast('Export downloaded!', 'success');
+    const uniqueCategories = computed(() => new Set(entries.value.map(e => e.category)).size);
+
+    function openSheet(entry) {
+      // Re-read sheets in case inventory updated them
+      sheets.value = loadSheets();
+      viewEntry.value = entry;
     }
 
-    function showToast(msg, type='info') {
-      const id=Date.now();
-      toasts.value.push({id,msg,type});
-      setTimeout(()=>{ toasts.value=toasts.value.filter(t=>t.id!==id); },2600);
+    function closeSheet() { viewEntry.value = null; }
+
+    function exportCSV(entry) {
+      const s = sheets.value[entry.id];
+      if (!s) return;
+      const lines = s.data.map(row =>
+        row.map(cell => '"' + String(cell || '').replace(/"/g, '""') + '"').join(',')
+      );
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = entry.title.replace(/\s+/g, '_') + '.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('CSV exported!', 'success');
+    }
+
+    function showToast(msg, type = 'info') {
+      const id = Date.now();
+      toasts.value.push({ id, msg, type });
+      setTimeout(() => { toasts.value = toasts.value.filter(t => t.id !== id); }, 2600);
     }
 
     return {
-      entries, categories, activeCat, activeTag, toasts,
-      catColor, getPillClass, totalTags, uniqueCategories, uniqueTagCount,
-      categoryStats, allTagFreq, filteredEntries,
-      exportJSON, formatDate
+      entries, categories, sheets, search, catFilter, viewEntry, toasts,
+      catColor, sheetData, sheetDimensions, filledCells, colLetter,
+      entriesWithSheet, filteredEntries, uniqueCategories,
+      openSheet, closeSheet, exportCSV, formatDate
     };
   }
 }).mount('#app');

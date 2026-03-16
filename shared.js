@@ -1,17 +1,15 @@
 // ── TagVault Shared Data Layer ──────────────────────────────────────
-const DB_KEY = 'tagvault_entries';
+const DB_KEY  = 'tagvault_entries';
 const CAT_KEY = 'tagvault_categories';
 
 const DEFAULT_CATEGORIES = [
-  { name: 'CV',    color: '#a78bfa' },
+  { name: 'CSV',   color: '#a78bfa' },
   { name: 'Excel', color: '#34d399' },
-  { name: 'Word',  color: '#60a5fa' },
-  { name: 'PDF',   color: '#f87171' },
 ];
 
 const DEFAULT_ENTRIES = [
-  { id: 1, title: 'John Doe Resume',   category: 'CV',    tags: ['rapids', '2024', 'senior'], createdAt: Date.now() - 86400000 },
-  { id: 2, title: 'Q3 Financial Report', category: 'Excel', tags: ['finance', 'quarterly'],  createdAt: Date.now() - 3600000  },
+  { id: 1, title: 'Sample CSV Record',   category: 'CSV',   tags: ['sample', '2024'], createdAt: Date.now() - 86400000 },
+  { id: 2, title: 'Sample Excel Report', category: 'Excel', tags: ['report', 'q1'],   createdAt: Date.now() - 3600000  },
 ];
 
 function loadEntries() {
@@ -37,7 +35,7 @@ function catColor(name, cats) {
 }
 
 function tagClass(t) {
-  const map = { cv:'cv', excel:'excel', word:'word', pdf:'pdf' };
+  const map = { csv: 'csv', excel: 'excel' };
   return map[t.toLowerCase()] || 'other';
 }
 

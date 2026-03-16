@@ -204,10 +204,8 @@ body {
 .pill-x:hover { opacity: 1; }
 
 /* cat-specific colors */
-.pill-cv    { background: #ede9fe; color: #6d28d9; }
+.pill-csv   { background: #ede9fe; color: #6d28d9; }
 .pill-excel { background: #d1fae5; color: #065f46; }
-.pill-word  { background: #dbeafe; color: #1d4ed8; }
-.pill-pdf   { background: #fee2e2; color: #b91c1c; }
 .pill-other { background: var(--surface3); color: var(--text2); }
 
 /* ── SELECT ──────────────────────────────────────── */
@@ -334,7 +332,7 @@ body {
 .tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
 
 /* ── STAT CARDS ──────────────────────────────────── */
-.stats-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 24px; }
+.stats-row { display: flex; gap: 14px; margin-bottom: 34px; flex: 0 0 auto; width: 160px;  }
 .stat-card {
   background: var(--surface);
   border: 1px solid var(--border);
