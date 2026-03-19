@@ -291,6 +291,7 @@ const { createApp, ref, computed, watch } = Vue;
 
 const SHEET_STORE = 'tagvault_sheets';
 const EXCEL_JS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+const JSZIP_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
 const TAGVAULT_META_SHEET = '__TagVaultMeta';
 const TAGVAULT_META_MARKER = 'TAGVAULT_META';
 const TAGVAULT_META_VERSION = 1;
@@ -323,7 +324,10 @@ function ensureScript(src, isReady) {
 }
 
 function ensureExcelImportLib() {
-  return ensureScript(EXCEL_JS_SRC, () => !!window.ExcelJS);
+  return Promise.all([
+    ensureScript(EXCEL_JS_SRC, () => !!window.ExcelJS),
+    ensureScript(JSZIP_SRC, () => !!window.JSZip),
+  ]);
 }
 
 const FORM_DRAFT_KEY  = 'tagvault_form_draft';
@@ -381,6 +385,25 @@ function formatImportedCellValue(cell) {
   return String(cell?.text || value || '');
 }
 
+function countImportedFilledCells(sheet) {
+  return (Array.isArray(sheet?.data) ? sheet.data : []).reduce((total, row) =>
+    total + (Array.isArray(row) ? row.filter(cell => String(cell ?? '').trim()).length : 0)
+  , 0);
+}
+
+function isCbmsLikeImportedSheet(sheet) {
+  const sample = (Array.isArray(sheet?.data) ? sheet.data : [])
+    .slice(0, 8)
+    .map(row => (Array.isArray(row) ? row : []).map(cell => String(cell ?? '').trim().toUpperCase()).join(' '))
+    .join(' ');
+  const signals = ['LOCATION', 'PSA', 'BRGY', 'CBMS', 'POPCEN', 'MALE HEADED', 'FEMALE HEADED'];
+  return signals.filter(signal => sample.includes(signal)).length >= 2;
+}
+
+function detectImportedStyleMode(sheet) {
+  return isCbmsLikeImportedSheet(sheet) ? 'styled' : 'plain';
+}
+
 function normalizeImportedSheet(sheet) {
   const rawData = Array.isArray(sheet?.data) ? sheet.data : [];
   const rawRows = Math.max(0, parseInt(sheet?.rows, 10) || rawData.length || 0);
@@ -405,11 +428,401 @@ function normalizeImportedSheet(sheet) {
     data,
     theme: sheet?.theme ? { ...sheet.theme } : undefined,
     cellStyles: sheet?.cellStyles ? { ...sheet.cellStyles } : undefined,
-    styleMode: sheet?.styleMode || undefined,
+    styleMode: sheet?.styleMode || detectImportedStyleMode({ data }),
+    ...(sheet?.nativeChart ? { nativeChart: JSON.parse(JSON.stringify(sheet.nativeChart)) } : {}),
     trimmed: rawRows > MAX_ROWS || rawCols > MAX_COLS,
     rawRows,
     rawCols,
   };
+}
+
+function scoreImportedSheet(sheet) {
+  const rows = Array.isArray(sheet?.data) ? sheet.data : [];
+  const filledCells = countImportedFilledCells(sheet);
+  const firstRows = rows.slice(0, 16);
+  const numericRows = firstRows.filter(row =>
+    (Array.isArray(row) ? row : []).filter(cell => {
+      const value = String(cell ?? '').trim().replace(/,/g, '');
+      return value && !isNaN(Number(value));
+    }).length >= 2
+  ).length;
+  const headerHints = firstRows.some(row =>
+    (Array.isArray(row) ? row : []).some(cell =>
+      /total|amount|value|month|date|category|series|male|female/i.test(String(cell ?? ''))
+    )
+  ) ? 20 : 0;
+  const chartPenalty = /dashboard|cover|summary/i.test(String(sheet?.name || '')) ? -10 : 0;
+  return filledCells + (numericRows * 8) + headerHints + chartPenalty;
+}
+
+function choosePrimaryImportedSheetId(sheets) {
+  if (!Array.isArray(sheets) || !sheets.length) return 'sheet-1';
+  return [...sheets]
+    .sort((a, b) => scoreImportedSheet(b) - scoreImportedSheet(a))[0]
+    .id;
+}
+
+function normalizeImportedWorkbook(workbook, fallbackName = 'Sheet 1') {
+  const rawSheets = Array.isArray(workbook?.sheets) ? workbook.sheets : [];
+  const sheets = rawSheets.map((sheet, index) => {
+    const normalized = normalizeImportedSheet(sheet);
+    return {
+      id: String(sheet?.id || `sheet-${index + 1}`),
+      name: String(sheet?.name || sheet?.title || `Sheet ${index + 1}`),
+      ...normalized,
+    };
+  });
+
+  if (!sheets.length) {
+    const normalized = normalizeImportedSheet(workbook?.sheet || {});
+    sheets.push({
+      id: 'sheet-1',
+      name: String(workbook?.activeSheetName || fallbackName),
+      ...normalized,
+    });
+  }
+
+  let activeSheetId = String(workbook?.activeSheetId || '');
+  if (!sheets.some(sheet => sheet.id === activeSheetId)) {
+    const named = sheets.find(sheet => sheet.name === workbook?.activeSheetName);
+    activeSheetId = named?.id || choosePrimaryImportedSheetId(sheets);
+  }
+
+  return { activeSheetId, sheets };
+}
+
+function buildSingleSheetWorkbook(name, sheet) {
+  const normalized = normalizeImportedSheet(sheet);
+  return {
+    activeSheetId: 'sheet-1',
+    sheets: [{
+      id: 'sheet-1',
+      name: String(name || 'Sheet 1'),
+      ...normalized,
+    }],
+  };
+}
+
+function cloneWorkbookForStorage(workbook) {
+  if (!workbook || !Array.isArray(workbook.sheets)) return undefined;
+  return {
+    activeSheetId: workbook.activeSheetId,
+    sheets: workbook.sheets.map(sheet => ({
+      id: sheet.id,
+      name: sheet.name,
+      rows: sheet.rows,
+      cols: sheet.cols,
+      data: sheet.data.map(row => [...row]),
+      ...(sheet.theme ? { theme: { ...sheet.theme } } : {}),
+      ...(sheet.cellStyles ? { cellStyles: { ...sheet.cellStyles } } : {}),
+      ...(sheet.styleMode ? { styleMode: sheet.styleMode } : {}),
+      ...(sheet.nativeChart ? { nativeChart: JSON.parse(JSON.stringify(sheet.nativeChart)) } : {}),
+      ...(sheet.trimmed ? { trimmed: true } : {}),
+      ...(sheet.rawRows ? { rawRows: sheet.rawRows } : {}),
+      ...(sheet.rawCols ? { rawCols: sheet.rawCols } : {}),
+    })),
+  };
+}
+
+function parseXmlString(xml) {
+  return new DOMParser().parseFromString(String(xml || ''), 'application/xml');
+}
+
+function xmlElements(node, localName) {
+  return Array.from(node?.getElementsByTagName('*') || []).filter(el => el.localName === localName);
+}
+
+function xmlChildren(node, localName) {
+  return Array.from(node?.childNodes || []).filter(child =>
+    child.nodeType === 1 && (!localName || child.localName === localName)
+  );
+}
+
+function xmlFirst(node, localName) {
+  return xmlElements(node, localName)[0] || null;
+}
+
+function xmlAttr(node, name) {
+  if (!node?.attributes) return '';
+  const exact = node.getAttribute(name);
+  if (exact !== null && exact !== undefined) return exact;
+  const matched = Array.from(node.attributes).find(attr =>
+    attr.name === name || attr.localName === name || attr.name.endsWith(`:${name}`)
+  );
+  return matched ? matched.value : '';
+}
+
+function zipDirname(path) {
+  const normalized = String(path || '').replace(/\\/g, '/');
+  const index = normalized.lastIndexOf('/');
+  return index >= 0 ? normalized.slice(0, index + 1) : '';
+}
+
+function zipResolvePath(basePath, targetPath) {
+  const target = String(targetPath || '').replace(/\\/g, '/');
+  if (!target) return '';
+  return new URL(target.replace(/^\/+/, ''), `https://zip.local/${zipDirname(basePath)}`).pathname.replace(/^\/+/, '');
+}
+
+function sheetRelPath(sheetPath) {
+  const normalized = String(sheetPath || '').replace(/\\/g, '/');
+  const dir = zipDirname(normalized);
+  const name = normalized.slice(dir.length);
+  return `${dir}_rels/${name}.rels`;
+}
+
+async function zipFileText(zip, path) {
+  const file = zip.file(path);
+  return file ? file.async('string') : null;
+}
+
+async function readRelationships(zip, ownerPath) {
+  const relXml = await zipFileText(zip, sheetRelPath(ownerPath));
+  if (!relXml) return {};
+  const relDoc = parseXmlString(relXml);
+  const rels = {};
+  xmlElements(relDoc, 'Relationship').forEach(rel => {
+    const id = xmlAttr(rel, 'Id');
+    const target = xmlAttr(rel, 'Target');
+    if (id && target) rels[id] = zipResolvePath(ownerPath, target);
+  });
+  return rels;
+}
+
+function chartThemeColor(token) {
+  return {
+    accent1: '#4472C4',
+    accent2: '#ED7D31',
+    accent3: '#A5A5A5',
+    accent4: '#FFC000',
+    accent5: '#5B9BD5',
+    accent6: '#70AD47',
+    tx1: '#000000',
+    tx2: '#FFFFFF',
+    bg1: '#FFFFFF',
+    bg2: '#000000',
+  }[String(token || '').trim()] || '';
+}
+
+function chartColorFromNode(node, fallback = '') {
+  const solidFill = xmlFirst(node, 'solidFill');
+  if (!solidFill) return fallback;
+  const srgb = xmlFirst(solidFill, 'srgbClr');
+  if (srgb) {
+    const value = xmlAttr(srgb, 'val');
+    if (value) return `#${value}`;
+  }
+  const scheme = xmlFirst(solidFill, 'schemeClr');
+  const mapped = chartThemeColor(xmlAttr(scheme, 'val'));
+  return mapped || fallback;
+}
+
+function chartTextFromNode(node) {
+  const richText = xmlElements(node, 't').map(el => String(el.textContent || '').trim()).filter(Boolean).join(' ');
+  if (richText) return richText;
+  const valueNode = xmlFirst(node, 'v');
+  return valueNode ? String(valueNode.textContent || '').trim() : '';
+}
+
+function chartCachedValues(node) {
+  const cache = xmlFirst(node, 'strCache') || xmlFirst(node, 'numCache') || xmlFirst(node, 'multiLvlStrCache') || xmlFirst(node, 'numLit') || xmlFirst(node, 'strLit');
+  if (!cache) return [];
+  return xmlElements(cache, 'pt')
+    .map(pt => ({
+      index: parseInt(xmlAttr(pt, 'idx'), 10) || 0,
+      value: chartTextFromNode(pt),
+    }))
+    .sort((a, b) => a.index - b.index)
+    .map(pt => pt.value);
+}
+
+function chartSeriesText(ser) {
+  const tx = xmlFirst(ser, 'tx');
+  if (!tx) return '';
+  const cached = chartCachedValues(tx);
+  return cached[0] || chartTextFromNode(tx);
+}
+
+function chartCategories(ser) {
+  const source = xmlFirst(ser, 'cat') || xmlFirst(ser, 'xVal');
+  if (!source) return [];
+  const cached = chartCachedValues(source);
+  return cached.map(value => String(value || '').trim());
+}
+
+function chartValues(ser) {
+  const source = xmlFirst(ser, 'val') || xmlFirst(ser, 'yVal');
+  if (!source) return [];
+  return chartCachedValues(source).map(value => {
+    const parsed = parseFloat(String(value || '').replace(/,/g, ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  });
+}
+
+function parseExcelChart(chartXml) {
+  const chartDoc = parseXmlString(chartXml);
+  const plotArea = xmlFirst(chartDoc, 'plotArea');
+  if (!plotArea) return null;
+
+  const chartNode = ['barChart', 'lineChart', 'pieChart', 'doughnutChart', 'scatterChart', 'radarChart', 'areaChart']
+    .map(tag => xmlFirst(plotArea, tag))
+    .find(Boolean);
+  if (!chartNode) return null;
+
+  const localType = chartNode.localName;
+  const datasets = xmlChildren(chartNode, 'ser').map((ser, index) => {
+    const label = chartSeriesText(ser) || `Series ${index + 1}`;
+    const categories = chartCategories(ser);
+    const values = chartValues(ser);
+    const baseColor = chartColorFromNode(xmlFirst(ser, 'spPr'), ['#4472C4', '#ED7D31', '#70AD47', '#FFC000', '#5B9BD5', '#A5A5A5'][index % 6]);
+    return {
+      label,
+      categories,
+      values,
+      color: baseColor,
+      smooth: xmlAttr(xmlFirst(ser, 'smooth'), 'val') === '1',
+      marker: xmlAttr(xmlFirst(xmlFirst(ser, 'marker'), 'symbol'), 'val') || '',
+    };
+  }).filter(series => series.values.some(value => value !== null));
+
+  if (!datasets.length) return null;
+
+  const labels = datasets.find(series => series.categories.length)?.categories || [];
+  const title = chartTextFromNode(xmlFirst(chartDoc, 'title'));
+  const legendPos = xmlAttr(xmlFirst(chartDoc, 'legendPos'), 'val') || 't';
+  const chart = {
+    source: 'excel-native',
+    title,
+    legendPosition: ({ t: 'top', b: 'bottom', l: 'left', r: 'right' })[legendPos] || 'top',
+    type: 'bar',
+    datasets: [],
+  };
+
+  if (localType === 'lineChart' || localType === 'areaChart') {
+    chart.type = 'line';
+    chart.labels = labels;
+    chart.datasets = datasets.map(series => ({
+      label: series.label,
+      data: series.values,
+      borderColor: series.color,
+      backgroundColor: localType === 'areaChart' ? `${series.color}66` : series.color,
+      pointBackgroundColor: series.color,
+      pointRadius: series.marker === 'none' ? 0 : 3,
+      pointHoverRadius: series.marker === 'none' ? 0 : 4,
+      tension: series.smooth ? 0.38 : 0,
+      fill: localType === 'areaChart',
+      spanGaps: true,
+    }));
+    return chart;
+  }
+
+  if (localType === 'pieChart' || localType === 'doughnutChart') {
+    const firstSeries = datasets[0];
+    chart.type = localType === 'doughnutChart' ? 'doughnut' : 'pie';
+    chart.labels = firstSeries.categories.length ? firstSeries.categories : labels;
+    chart.datasets = [{
+      label: firstSeries.label,
+      data: firstSeries.values,
+      backgroundColor: firstSeries.values.map((_, index) => datasets[index]?.color || ['#4472C4', '#ED7D31', '#70AD47', '#FFC000', '#5B9BD5', '#A5A5A5'][index % 6]),
+      borderColor: '#ffffff',
+      borderWidth: 1,
+    }];
+    chart.cutout = localType === 'doughnutChart' ? '50%' : '0%';
+    return chart;
+  }
+
+  if (localType === 'scatterChart') {
+    chart.type = 'scatter';
+    chart.datasets = datasets.map(series => ({
+      label: series.label,
+      data: series.values.map((value, index) => ({ x: parseFloat(series.categories[index]) || index + 1, y: value })),
+      borderColor: series.color,
+      backgroundColor: series.color,
+      pointRadius: 4,
+      showLine: false,
+    }));
+    return chart;
+  }
+
+  if (localType === 'radarChart') {
+    chart.type = 'radar';
+    chart.labels = labels;
+    chart.datasets = datasets.map(series => ({
+      label: series.label,
+      data: series.values,
+      borderColor: series.color,
+      backgroundColor: `${series.color}33`,
+      pointBackgroundColor: series.color,
+      pointRadius: 3,
+      fill: true,
+    }));
+    return chart;
+  }
+
+  const barDir = xmlAttr(xmlFirst(chartNode, 'barDir'), 'val') || 'col';
+  const grouping = xmlAttr(xmlFirst(chartNode, 'grouping'), 'val') || 'clustered';
+  chart.type = 'bar';
+  chart.labels = labels;
+  chart.indexAxis = barDir === 'bar' ? 'y' : 'x';
+  chart.stacked = grouping === 'stacked' || grouping === 'percentStacked';
+  chart.datasets = datasets.map(series => ({
+    label: series.label,
+    data: series.values,
+    backgroundColor: `${series.color}CC`,
+    borderColor: series.color,
+    borderWidth: 1,
+    borderRadius: grouping === 'stacked' ? 0 : 4,
+  }));
+  return chart;
+}
+
+async function extractNativeChartsFromXlsx(buffer) {
+  const JSZip = window.JSZip;
+  if (!JSZip) return {};
+  const zip = await JSZip.loadAsync(buffer);
+  const workbookXml = await zipFileText(zip, 'xl/workbook.xml');
+  const workbookRelsXml = await zipFileText(zip, 'xl/_rels/workbook.xml.rels');
+  if (!workbookXml || !workbookRelsXml) return {};
+
+  const workbookDoc = parseXmlString(workbookXml);
+  const workbookRels = parseXmlString(workbookRelsXml);
+  const relTargets = {};
+  xmlElements(workbookRels, 'Relationship').forEach(rel => {
+    const id = xmlAttr(rel, 'Id');
+    const target = xmlAttr(rel, 'Target');
+    if (id && target) relTargets[id] = zipResolvePath('xl/workbook.xml', target);
+  });
+
+  const result = {};
+  const sheetEntries = xmlElements(workbookDoc, 'sheet').map((sheetEl, index) => ({
+    id: `sheet-${index + 1}`,
+    name: xmlAttr(sheetEl, 'name') || `Sheet ${index + 1}`,
+    path: relTargets[xmlAttr(sheetEl, 'id')],
+  })).filter(sheet => sheet.path);
+
+  for (const sheet of sheetEntries) {
+    const sheetXml = await zipFileText(zip, sheet.path);
+    if (!sheetXml) continue;
+    const sheetDoc = parseXmlString(sheetXml);
+    const drawingId = xmlAttr(xmlFirst(sheetDoc, 'drawing'), 'id');
+    if (!drawingId) continue;
+    const sheetRels = await readRelationships(zip, sheet.path);
+    const drawingPath = sheetRels[drawingId];
+    if (!drawingPath) continue;
+    const drawingXml = await zipFileText(zip, drawingPath);
+    if (!drawingXml) continue;
+    const drawingDoc = parseXmlString(drawingXml);
+    const drawingRels = await readRelationships(zip, drawingPath);
+    const chartRef = xmlElements(drawingDoc, 'chart')[0];
+    const chartPath = drawingRels[xmlAttr(chartRef, 'id')];
+    if (!chartPath) continue;
+    const chartXml = await zipFileText(zip, chartPath);
+    if (!chartXml) continue;
+    const parsedChart = parseExcelChart(chartXml);
+    if (parsedChart) result[sheet.name] = parsedChart;
+  }
+
+  return result;
 }
 
 function parseWorkbookMetadata(workbook) {
@@ -443,50 +856,83 @@ async function parseXlsxFile(file) {
   await ensureExcelImportLib();
   const workbook = new window.ExcelJS.Workbook();
   const buffer = await file.arrayBuffer();
+  let nativeChartsBySheetName = {};
+  try {
+    nativeChartsBySheetName = await extractNativeChartsFromXlsx(buffer);
+  } catch {
+    nativeChartsBySheetName = {};
+  }
   await workbook.xlsx.load(buffer);
 
   const meta = parseWorkbookMetadata(workbook);
   if (meta) {
+    const importedWorkbook = meta.workbook
+      ? normalizeImportedWorkbook(meta.workbook, meta.entry?.title || 'Imported Workbook')
+      : buildSingleSheetWorkbook(meta.entry?.title || file.name.replace(/\.[^.]+$/, '') || 'Imported Workbook', meta.sheet);
+    const primarySheet = importedWorkbook.sheets.find(sheet => sheet.id === importedWorkbook.activeSheetId) || importedWorkbook.sheets[0];
     return {
       title: String(meta.entry?.title || file.name.replace(/\.[^.]+$/, '') || 'Imported Workbook'),
       category: meta.entry?.category === 'CSV' ? 'CSV' : 'Excel',
       tags: Array.isArray(meta.entry?.tags) ? meta.entry.tags : [],
-      sheet: normalizeImportedSheet(meta.sheet),
+      sheet: primarySheet,
+      workbook: importedWorkbook,
       usedMetadata: true,
     };
   }
 
-  const worksheet = workbook.worksheets.find(ws => ws.name !== TAGVAULT_META_SHEET && ws.state !== 'veryHidden')
-    || workbook.worksheets.find(ws => ws.name !== TAGVAULT_META_SHEET)
-    || workbook.worksheets[0];
+  const visibleWorksheets = workbook.worksheets.filter(ws =>
+    ws.name !== TAGVAULT_META_SHEET && ws.state !== 'veryHidden' && ws.state !== 'hidden'
+  );
+  const importableWorksheets = visibleWorksheets.length
+    ? visibleWorksheets
+    : workbook.worksheets.filter(ws => ws.name !== TAGVAULT_META_SHEET);
 
-  if (!worksheet) throw new Error('No worksheet found in this XLSX file.');
+  if (!importableWorksheets.length) throw new Error('No worksheet found in this XLSX file.');
 
-  const rawRows = Math.min(worksheet.rowCount || 0, MAX_ROWS);
-  let rawCols = 0;
-  for (let ri = 1; ri <= rawRows; ri++) {
-    const row = worksheet.getRow(ri);
-    rawCols = Math.max(rawCols, Math.min(row.cellCount || row.actualCellCount || 0, MAX_COLS));
-  }
+  const importedWorkbook = normalizeImportedWorkbook({
+    activeSheetName: workbook.worksheets[workbook.views?.[0]?.activeTab || 0]?.name,
+    sheets: importableWorksheets.map((worksheet, index) => {
+      const rawRows = Math.min(worksheet.rowCount || 0, MAX_ROWS);
+      let rawCols = 0;
+      for (let ri = 1; ri <= rawRows; ri++) {
+        const row = worksheet.getRow(ri);
+        rawCols = Math.max(rawCols, Math.min(row.cellCount || row.actualCellCount || 0, MAX_COLS));
+      }
 
-  const rows = rawRows;
-  const cols = Math.min(rawCols, MAX_COLS);
-  const data = [];
+      const rows = rawRows;
+      const cols = Math.min(rawCols, MAX_COLS);
+      const data = [];
 
-  for (let ri = 1; ri <= rows; ri++) {
-    const row = worksheet.getRow(ri);
-    const nextRow = [];
-    for (let ci = 1; ci <= cols; ci++) {
-      nextRow.push(formatImportedCellValue(row.getCell(ci)));
-    }
-    data.push(nextRow);
-  }
+      for (let ri = 1; ri <= rows; ri++) {
+        const row = worksheet.getRow(ri);
+        const nextRow = [];
+        for (let ci = 1; ci <= cols; ci++) {
+          nextRow.push(formatImportedCellValue(row.getCell(ci)));
+        }
+        data.push(nextRow);
+      }
+
+      return {
+        id: `sheet-${index + 1}`,
+        name: worksheet.name,
+        rows,
+        cols,
+        data,
+        ...(nativeChartsBySheetName[worksheet.name]
+          ? { nativeChart: JSON.parse(JSON.stringify(nativeChartsBySheetName[worksheet.name])) }
+          : {}),
+      };
+    }),
+  }, file.name.replace(/\.[^.]+$/, '') || 'Imported Workbook');
+
+  const primarySheet = importedWorkbook.sheets.find(sheet => sheet.id === importedWorkbook.activeSheetId) || importedWorkbook.sheets[0];
 
   return {
-    title: file.name.replace(/\.[^.]+$/, '') || worksheet.name || 'Imported Workbook',
+    title: file.name.replace(/\.[^.]+$/, '') || primarySheet.name || 'Imported Workbook',
     category: 'Excel',
     tags: [],
-    sheet: normalizeImportedSheet({ rows, cols, data }),
+    sheet: primarySheet,
+    workbook: importedWorkbook,
     usedMetadata: false,
   };
 }
@@ -650,15 +1096,20 @@ createApp({
           const cachedText = importFileInfo.value && importFileInfo.value.text;
           const csvText = cachedText || await importFile.value.text();
           const grid = parseCSV(csvText);
+          const importedWorkbook = buildSingleSheetWorkbook(
+            importFile.value.name.replace(/\.[^.]+$/, '') || 'Imported CSV',
+            {
+              rows: grid.length,
+              cols: grid.reduce((m, r) => Math.max(m, r.length), 0),
+              data: grid
+            }
+          );
           imported = {
             title: importFile.value.name.replace(/\.[^.]+$/, ''),
             category: 'CSV',
             tags: [],
-            sheet: normalizeImportedSheet({
-              rows: grid.length,
-              cols: grid.reduce((m, r) => Math.max(m, r.length), 0),
-              data: grid
-            }),
+            sheet: importedWorkbook.sheets[0],
+            workbook: importedWorkbook,
             usedMetadata: false,
           };
         } else {
@@ -701,6 +1152,7 @@ createApp({
             ...(sheet.theme ? { theme: { ...sheet.theme } } : {}),
             ...(sheet.cellStyles ? { cellStyles: { ...sheet.cellStyles } } : {}),
             ...(sheet.styleMode ? { styleMode: sheet.styleMode } : {}),
+            ...(imported.workbook ? { workbook: cloneWorkbookForStorage(imported.workbook) } : {}),
           };
           saveSheets(sheets);
         } catch (qErr) {
@@ -731,8 +1183,9 @@ createApp({
         lastImportId.value   = newEntry.id;
 
         const note = sheet.trimmed ? ` (capped at ${sheet.rows} rows × ${sheet.cols} cols)` : '';
+        const workbookDetail = imported.workbook?.sheets?.length > 1 ? ` • ${imported.workbook.sheets.length} sheets ready for render` : '';
         const detail = imported.usedMetadata ? ' • TagVault layout restored' : '';
-        showToast(`"${title}" imported — ${sheet.rows} rows × ${sheet.cols} cols${note}${detail}`, 'success');
+        showToast(`"${title}" imported — ${sheet.rows} rows × ${sheet.cols} cols${note}${detail}${workbookDetail}`, 'success');
 
         setTimeout(() => {
           importProgress.value = 0;

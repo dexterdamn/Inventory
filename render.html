@@ -177,10 +177,11 @@
 
     <!-- Info bar -->
     <div class="excel-info-bar">
-      <span><strong>{{ activeSheetData(viewEntry.id).rows }}</strong> rows</span>
+      <span><strong>{{ currentViewSheetData().rows }}</strong> rows</span>
       <span style="color:#94a3b8">×</span>
-      <span><strong>{{ activeSheetData(viewEntry.id).cols }}</strong> columns</span>
-      <span class="excel-info-pill">{{ filledCellsByMode(viewEntry.id, displayMode) }} cells with data</span>
+      <span><strong>{{ currentViewSheetData().cols }}</strong> columns</span>
+      <span class="excel-info-pill">{{ currentViewSheetName() }}</span>
+      <span class="excel-info-pill">{{ filledCellsByMode(viewEntry.id, displayMode, activeWorkbookSheetId) }} cells with data</span>
       <span class="excel-info-pill">Saved {{ formatDate(viewEntry.createdAt) }}</span>
       <span class="excel-info-pill">{{ displayModeLabel }}</span>
       <div class="excel-action-group">
@@ -204,31 +205,44 @@
       </div>
     </div>
 
+    <div class="excel-sheet-tabs" v-if="workbookSheets(viewEntry.id).length > 1">
+      <button
+        v-for="sheet in workbookSheets(viewEntry.id)"
+        :key="sheet.id"
+        class="excel-sheet-tab"
+        :class="{active: activeWorkbookSheetId === sheet.id}"
+        @click="selectWorkbookSheet(sheet.id)"
+      >
+        <span class="excel-sheet-tab-name">{{ sheet.name }}</span>
+        <span class="excel-sheet-tab-meta">{{ sheet.rows }} × {{ sheet.cols }}</span>
+      </button>
+    </div>
+
     <!-- Body -->
     <div class="excel-body-split">
 
       <!-- Read-only grid -->
       <div class="excel-scroll">
-        <table class="excel-table" :style="tableThemeStyle(viewEntry.id)">
+        <table class="excel-table" :style="tableThemeStyle(viewEntry.id, activeWorkbookSheetId)">
           <thead>
             <tr>
               <th class="col-num-header"></th>
-              <th v-for="ci in activeSheetData(viewEntry.id).cols" :key="ci">
+              <th v-for="ci in currentViewSheetData().cols" :key="ci">
                 {{ colLetter(ci-1) }}
               </th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(row, ri) in activeSheetData(viewEntry.id).data" :key="ri"
-                :class="tableRowClass(viewEntry.id, row, ri)">
+            <tr v-for="(row, ri) in currentViewSheetData().data" :key="ri"
+                :class="tableRowClass(viewEntry.id, row, ri, activeWorkbookSheetId)">
               <td class="row-num-cell">{{ ri+1 }}</td>
 
               <!-- Merged single-cell rows: highlight, title, note -->
-              <template v-if="shouldUseStandardizedLayout(viewEntry.id) && isMergedRow(row, ri)">
-                <td :colspan="activeSheetData(viewEntry.id).cols"
+              <template v-if="shouldUseStandardizedLayout(viewEntry.id, activeWorkbookSheetId) && isMergedRow(row, ri)">
+                <td :colspan="currentViewSheetData().cols"
                     class="data-cell has-data merged-cell"
-                    :class="{'has-custom-style': hasCustomCellStyle(viewEntry.id, ri, 0)}"
-                    :style="renderCellStyle(viewEntry.id, ri, 0)">
+                    :class="{'has-custom-style': hasCustomCellStyle(viewEntry.id, ri, 0, activeWorkbookSheetId)}"
+                    :style="renderCellStyle(viewEntry.id, ri, 0, activeWorkbookSheetId)">
                   {{ getMergedText(row) }}
                 </td>
               </template>
@@ -237,8 +251,8 @@
               <template v-else>
                 <td v-for="(cell, ci) in row" :key="ci"
                     class="data-cell"
-                    :class="[cell ? 'has-data' : 'empty', tableCellClass(viewEntry.id, row, ri, ci), {'has-custom-style': hasCustomCellStyle(viewEntry.id, ri, ci)}]"
-                    :style="renderCellStyle(viewEntry.id, ri, ci)">
+                    :class="[cell ? 'has-data' : 'empty', tableCellClass(viewEntry.id, row, ri, ci, activeWorkbookSheetId), {'has-custom-style': hasCustomCellStyle(viewEntry.id, ri, ci, activeWorkbookSheetId)}]"
+                    :style="renderCellStyle(viewEntry.id, ri, ci, activeWorkbookSheetId)">
                   {{ cell || '' }}
                 </td>
               </template>
@@ -249,9 +263,9 @@
       </div>
 
       <!-- Chart panel -->
-      <div class="excel-chart-panel" v-if="shouldUseStandardizedLayout(viewEntry.id) && chartData(viewEntry.id)">
-        <div class="excel-chart-title">📊 Chart View</div>
-        <canvas :id="'chart-'+viewEntry.id" class="excel-chart-canvas"></canvas>
+      <div class="excel-chart-panel" v-if="currentChartData()">
+        <div class="excel-chart-title">Chart View · {{ currentViewSheetName() }}</div>
+        <canvas id="active-chart" class="excel-chart-canvas"></canvas>
       </div>
 
     </div>
@@ -357,6 +371,7 @@ createApp({
     const catFilter  = ref('');
     const displayMode = ref(localStorage.getItem(RENDER_MODE_STORE) || 'standardized');
     const viewEntry  = ref(null);
+    const activeWorkbookSheetId = ref('');
     const downloadOpen = ref(false);
     const toasts     = ref([]);
 
@@ -584,6 +599,195 @@ createApp({
       new Set(entries.value.map(e => e.category)).size
     );
 
+    function normalizeWorkbookSheet(sheet, fallbackName = 'Sheet 1', fallbackId = 'sheet-1') {
+      const rows = Math.max(0, parseInt(sheet?.rows, 10) || 0);
+      const cols = Math.max(0, parseInt(sheet?.cols, 10) || 0);
+      const sourceData = Array.isArray(sheet?.data) ? sheet.data : [];
+      const data = Array.from({ length: rows }, (_, ri) => {
+        const sourceRow = Array.isArray(sourceData[ri]) ? sourceData[ri] : [];
+        const next = sourceRow.slice(0, cols).map(cell => String(cell ?? ''));
+        while (next.length < cols) next.push('');
+        return next;
+      });
+      return {
+        id: String(sheet?.id || fallbackId),
+        name: String(sheet?.name || fallbackName),
+        rows,
+        cols,
+        data,
+        theme: sheet?.theme ? { ...sheet.theme } : undefined,
+        cellStyles: sheet?.cellStyles ? { ...sheet.cellStyles } : undefined,
+        styleMode: sheet?.styleMode || undefined,
+        ...(sheet?.nativeChart ? { nativeChart: JSON.parse(JSON.stringify(sheet.nativeChart)) } : {}),
+      };
+    }
+
+    function workbookSheetVariantsFor(id) {
+      const stored = sheets.value[id];
+      if (!stored || (!stored.data && !stored.workbook?.sheets?.length)) return null;
+      const workbookSheets = Array.isArray(stored.workbook?.sheets) && stored.workbook.sheets.length
+        ? stored.workbook.sheets.map((sheet, index) =>
+            normalizeWorkbookSheet(sheet, sheet?.name || `Sheet ${index + 1}`, sheet?.id || `sheet-${index + 1}`)
+          )
+        : [normalizeWorkbookSheet(stored, 'Sheet 1', 'sheet-1')];
+      const sheetsById = {};
+      workbookSheets.forEach(sheet => {
+        sheetsById[sheet.id] = { raw: sheet, trimmed: null };
+      });
+      let activeSheetId = String(stored.workbook?.activeSheetId || '');
+      if (!sheetsById[activeSheetId]) activeSheetId = workbookSheets[0]?.id || 'sheet-1';
+      return { activeSheetId, sheets: sheetsById };
+    }
+
+    function workbookSheets(id) {
+      const workbook = workbookSheetVariantsFor(id);
+      return workbook ? Object.values(workbook.sheets).map(variant => variant.raw) : [];
+    }
+
+    function resolveSheetId(id, requestedSheetId = null) {
+      const workbook = workbookSheetVariantsFor(id);
+      if (!workbook) return null;
+      if (requestedSheetId && workbook.sheets[requestedSheetId]) return requestedSheetId;
+      if (viewEntry.value?.id === id && activeWorkbookSheetId.value && workbook.sheets[activeWorkbookSheetId.value]) {
+        return activeWorkbookSheetId.value;
+      }
+      return workbook.activeSheetId || Object.keys(workbook.sheets)[0] || null;
+    }
+
+    function rawSheetData(id, sheetId = null) {
+      const workbook = workbookSheetVariantsFor(id);
+      const resolvedSheetId = resolveSheetId(id, sheetId);
+      return resolvedSheetId ? workbook?.sheets?.[resolvedSheetId]?.raw || EMPTY_SHEET : EMPTY_SHEET;
+    }
+
+    function trimmedSheetData(id, sheetId = null) {
+      const workbook = workbookSheetVariantsFor(id);
+      const resolvedSheetId = resolveSheetId(id, sheetId);
+      const cached = resolvedSheetId ? workbook?.sheets?.[resolvedSheetId] : null;
+      if (!cached) return EMPTY_SHEET;
+      if (cached.trimmed) return cached.trimmed;
+
+      const s = cached.raw;
+      const { cutAt } = findDataCutoffCol(s.data);
+      const keepCols = [];
+      for (let ci = 0; ci <= cutAt; ci++) keepCols.push(ci);
+      const data = s.data.map(row =>
+        keepCols.map(ci => String(row[ci] || '').trim())
+      );
+      cached.trimmed = { rows: s.rows, cols: keepCols.length, data };
+      return cached.trimmed;
+    }
+
+    function sheetData(id, sheetId = null) {
+      return displayMode.value === 'raw' ? rawSheetData(id, sheetId) : trimmedSheetData(id, sheetId);
+    }
+
+    function sheetDimensions(id, sheetId = null) {
+      const s = rawSheetData(id, sheetId);
+      if (!s.rows && !s.cols) return '';
+      return `${s.rows} × ${s.cols}`;
+    }
+
+    function filledCells(id, sheetId = null) {
+      const s = rawSheetData(id, sheetId);
+      return s.data.reduce((total, row) =>
+        total + row.filter(c => c && String(c).trim()).length, 0);
+    }
+
+    function activeSheetData(id, sheetId = null) {
+      return shouldUseStandardizedLayout(id, sheetId) ? trimmedSheetData(id, sheetId) : rawSheetData(id, sheetId);
+    }
+
+    function previewSheetData(id) {
+      return cardPreviewData.value[id] || sheetData(id);
+    }
+
+    function sheetTheme(id, sheetId = null) {
+      const s = rawSheetData(id, sheetId) || {};
+      return { ...defaultSheetTheme(), ...(s.theme || {}) };
+    }
+
+    function sheetCellStyles(id, sheetId = null) {
+      const s = rawSheetData(id, sheetId) || {};
+      return s.cellStyles || {};
+    }
+
+    function sheetStyleMode(id, sheetId = null) {
+      const s = rawSheetData(id, sheetId) || {};
+      if (s.styleMode) return s.styleMode;
+      return isCbmsStyledSheet(s.data) ? 'styled' : 'plain';
+    }
+
+    function hasManualEdits(id, sheetId = null) {
+      return Object.keys(sheetCellStyles(id, sheetId)).length > 0;
+    }
+
+    function shouldUseStandardizedLayout(id, sheetId = null) {
+      return displayMode.value === 'standardized' && sheetStyleMode(id, sheetId) === 'styled' && !hasManualEdits(id, sheetId);
+    }
+
+    function hasCustomCellStyle(id, ri, ci, sheetId = null) {
+      return !!sheetCellStyles(id, sheetId)[`${ri}-${ci}`];
+    }
+
+    function renderCellStyle(id, ri, ci, sheetId = null) {
+      const format = sheetCellStyles(id, sheetId)[`${ri}-${ci}`] || {};
+      const style = {};
+      if (format.fill) style['--custom-fill'] = format.fill;
+      if (format.text) style['--custom-text'] = format.text;
+      if (format.border) style.border = `1px solid ${format.border}`;
+      style.textAlign = format.align || 'left';
+      if (format.fontFamily) style.fontFamily = format.fontFamily;
+      if ('bold' in format) style.fontWeight = format.bold ? '700' : '400';
+      if ('italic' in format) style.fontStyle = format.italic ? 'italic' : 'normal';
+      return style;
+    }
+
+    function tableThemeStyle(id, sheetId = null) {
+      const theme = sheetTheme(id, sheetId);
+      return {
+        '--theme-header-dark': theme.headerDark,
+        '--theme-header-light': theme.headerLight,
+        '--theme-code': theme.code,
+        '--theme-name': theme.name,
+        '--theme-alt': theme.alt,
+        '--theme-total': theme.total,
+        '--theme-highlight': theme.highlight,
+        '--theme-note': theme.note,
+      };
+    }
+
+    function filledCellsByMode(id, mode = 'raw', sheetId = null) {
+      const s = mode === 'raw' ? rawSheetData(id, sheetId) : trimmedSheetData(id, sheetId);
+      return s.data.reduce((total, row) =>
+        total + row.filter(c => c && String(c).trim()).length, 0);
+    }
+
+    function currentViewSheetMeta() {
+      if (!viewEntry.value) return null;
+      const currentId = resolveSheetId(viewEntry.value.id, activeWorkbookSheetId.value);
+      return workbookSheets(viewEntry.value.id).find(sheet => sheet.id === currentId) || null;
+    }
+
+    function currentViewSheetData() {
+      if (!viewEntry.value) return EMPTY_SHEET;
+      return activeSheetData(viewEntry.value.id, activeWorkbookSheetId.value);
+    }
+
+    function currentViewSheetName() {
+      return currentViewSheetMeta()?.name || 'Sheet 1';
+    }
+
+    function currentChartData() {
+      if (!viewEntry.value) return null;
+      return chartData(viewEntry.value.id, activeWorkbookSheetId.value);
+    }
+
+    function selectWorkbookSheet(sheetId) {
+      activeWorkbookSheetId.value = sheetId;
+      downloadOpen.value = false;
+    }
+
     // ════════════════════════════════════════════════════════════
     // Helper functions
     // ════════════════════════════════════════════════════════════
@@ -656,8 +860,8 @@ createApp({
     // ════════════════════════════════════════════════════════════
     // cellClass — assign class to individual cells
     // ════════════════════════════════════════════════════════════
-    function cellClass(row, ri, ci) {
-      if (!viewEntry.value || !isCbmsStyledSheet(activeSheetData(viewEntry.value.id).data)) return '';
+    function cellClass(id, row, ri, ci, sheetId = null) {
+      if (!isCbmsStyledSheet(activeSheetData(id, sheetId).data)) return '';
       const rc        = rowClass(row, ri);
       const isDataRow = rc === 'row-data' || rc === 'row-data-alt';
 
@@ -671,12 +875,12 @@ createApp({
       return '';
     }
 
-    function tableRowClass(id, row, ri) {
-      return shouldUseStandardizedLayout(id) ? rowClass(row, ri) : '';
+    function tableRowClass(id, row, ri, sheetId = null) {
+      return shouldUseStandardizedLayout(id, sheetId) ? rowClass(row, ri) : '';
     }
 
-    function tableCellClass(id, row, ri, ci) {
-      return shouldUseStandardizedLayout(id) ? cellClass(row, ri, ci) : '';
+    function tableCellClass(id, row, ri, ci, sheetId = null) {
+      return shouldUseStandardizedLayout(id, sheetId) ? cellClass(id, row, ri, ci, sheetId) : '';
     }
 
     // ════════════════════════════════════════════════════════════
@@ -704,6 +908,11 @@ createApp({
              /^(0?[1-9]|[12]\d|3[01])[-/](0?[1-9]|1[0-2])[-/](19|20)\d{2}$/.test(v) ||
              /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[\s-]*(19|20)?\d{0,4}$/i.test(v) ||
              /^(q[1-4]|week\s*\d+|w\d+)$/i.test(v);
+    }
+
+    function isMonthOnlyLabel(value) {
+      return /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(uary|ch|il|e|y|ust|tember|ober|ember)?$/i
+        .test(String(value || '').trim());
     }
 
     function colorAt(index, alpha = 1) {
@@ -828,15 +1037,25 @@ createApp({
       };
     }
 
-    function extractChartData(id) {
-      const s = sheets.value[id];
+    function extractChartData(id, sheetId = null) {
+      const s = rawSheetData(id, sheetId);
       if (!s || !s.data || s.data.length < 2) return null;
       const data = s.data;
 
       // ── Step 1: find cutoff column using the same logic as the table ──
       const { cutAt: scanMax } = findDataCutoffCol(data);
-      const autoChart = buildPieChartData(data, scanMax) || buildLineChartData(data, scanMax);
-      if (autoChart) return autoChart;
+      const pieChart = buildPieChartData(data, scanMax);
+      if (pieChart) return pieChart;
+      const genericBarChart = buildGenericBarChartData(data, scanMax);
+      const lineChart = buildLineChartData(data, scanMax);
+      if (
+        genericBarChart &&
+        lineChart &&
+        Array.isArray(lineChart.labels) &&
+        lineChart.labels.length >= 2 &&
+        lineChart.labels.every(isMonthOnlyLabel)
+      ) return genericBarChart;
+      if (lineChart) return lineChart;
 
       // ── Step 2: find header row containing MALE and FEMALE ──
       let colHeaderRow = null, colHeaderIdx = -1;
@@ -988,13 +1207,74 @@ createApp({
 
       if (datasets.length) return { type: 'bar', variant: 'population', labels, datasets };
 
-      return buildGenericBarChartData(data, scanMax);
+      return genericBarChart;
     }
 
-    // chartData is called from the Vue template to decide whether to show chart panel
-    function chartData(id) {
-      if (!shouldUseStandardizedLayout(id)) return null;
-      return extractChartData(id);
+    function nativeChartData(id, sheetId = null) {
+      const nativeChart = rawSheetData(id, sheetId)?.nativeChart;
+      return nativeChart ? JSON.parse(JSON.stringify(nativeChart)) : null;
+    }
+
+    function chartData(id, sheetId = null) {
+      return nativeChartData(id, sheetId) || extractChartData(id, sheetId);
+    }
+
+    function isPieLikeChartType(type) {
+      return type === 'pie' || type === 'doughnut';
+    }
+
+    function formatChartValue(value) {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue)) return String(value ?? '');
+      return numericValue.toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: Number.isInteger(numericValue) ? 0 : 2,
+      });
+    }
+
+    function formatChartPercent(value) {
+      return `${Number(value || 0).toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 1,
+      })}%`;
+    }
+
+    function datasetTotal(dataset) {
+      return (dataset?.data || []).reduce((sum, value) => {
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue) ? sum + Math.abs(numericValue) : sum;
+      }, 0);
+    }
+
+    function resolveChartPointColor(dataset, dataIndex, fallback = '#bfdbfe') {
+      const backgroundColor = Array.isArray(dataset?.backgroundColor)
+        ? dataset.backgroundColor[dataIndex]
+        : dataset?.backgroundColor;
+      const borderColor = Array.isArray(dataset?.borderColor)
+        ? dataset.borderColor[dataIndex]
+        : dataset?.borderColor;
+      return backgroundColor || borderColor || fallback;
+    }
+
+    function chartPointSeriesText(chart, datasetIndex, dataIndex) {
+      const dataset = chart?.data?.datasets?.[datasetIndex];
+      const rawValue = dataset?.data?.[dataIndex];
+      const numericValue = Number(rawValue);
+      const label = dataset?.label || 'Value';
+      const valueText = Number.isFinite(numericValue)
+        ? formatChartValue(numericValue)
+        : String(rawValue ?? '');
+      const chartType = chart?.config?.type || chart?.data?.datasets?.[datasetIndex]?.type || '';
+
+      if (isPieLikeChartType(chartType) && Number.isFinite(numericValue)) {
+        const total = datasetTotal(dataset);
+        if (total > 0) {
+          const percent = (Math.abs(numericValue) / total) * 100;
+          return `${label}: ${valueText} (${formatChartPercent(percent)})`;
+        }
+      }
+
+      return `${label}: ${valueText}`;
     }
 
     function normalizeActiveElements(activeElements) {
@@ -1048,12 +1328,7 @@ createApp({
 
       const dataset = chart.data.datasets?.[primary.datasetIndex];
       const label = chart.data.labels?.[primary.dataIndex];
-      const rawValue = dataset?.data?.[primary.dataIndex];
-      const parsedValue = Number(rawValue);
-      const valueText = Number.isFinite(parsedValue)
-        ? Math.abs(parsedValue).toLocaleString()
-        : String(rawValue ?? '');
-      const seriesText = `${dataset?.label || 'Value'}: ${valueText}`;
+      const seriesText = chartPointSeriesText(chart, primary.datasetIndex, primary.dataIndex);
       const point = chart.getDatasetMeta(primary.datasetIndex)?.data?.[primary.dataIndex]?.tooltipPosition?.();
       if (!point) return;
 
@@ -1096,7 +1371,7 @@ createApp({
       targetCtx.fillText(String(label || ''), boxX + paddingX, boxY + paddingY);
 
       const bodyY = boxY + paddingY + 12 + lineGap;
-      targetCtx.fillStyle = dataset?.backgroundColor || '#bfdbfe';
+      targetCtx.fillStyle = resolveChartPointColor(dataset, primary.dataIndex);
       targetCtx.fillRect(boxX + paddingX, bodyY, colorBoxSize, colorBoxSize);
 
       targetCtx.fillStyle = '#e2e8f0';
@@ -1129,12 +1404,16 @@ createApp({
       return [];
     }
 
-    function getChartImageForExport(entryId) {
-      const canvas = document.getElementById(`chart-${entryId}`);
+    function activeChartCacheKey(entryId, sheetId = null) {
+      return `${entryId}:${sheetId || resolveSheetId(entryId) || 'sheet-1'}`;
+    }
+
+    function getChartImageForExport(entryId, sheetId = null) {
+      const canvas = document.getElementById('active-chart');
       if (!canvas || typeof canvas.toDataURL !== 'function') return null;
       if (!chartInstance || viewEntry.value?.id !== entryId) return canvas.toDataURL('image/png');
 
-      const hoverState = chartHoverStates[entryId] || [];
+      const hoverState = chartHoverStates[activeChartCacheKey(entryId, sheetId)] || [];
       const nextActive = normalizeActiveElements(hoverState).length
         ? normalizeActiveElements(hoverState)
         : pickFallbackExportTooltip(chartInstance);
@@ -1150,8 +1429,8 @@ createApp({
       return exportCanvas.toDataURL('image/png');
     }
 
-    async function renderChart(id) {
-      const cd = extractChartData(id);
+    async function renderChart(id, sheetId = null) {
+      const cd = chartData(id, sheetId);
       if (!cd) return;
 
       try {
@@ -1164,12 +1443,14 @@ createApp({
       nextTick(() => {
         setTimeout(() => {
           if (!viewEntry.value || viewEntry.value.id !== id) return;
-          const canvas = document.getElementById('chart-' + id);
+          const canvas = document.getElementById('active-chart');
           if (!canvas) return;
           if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+          const chartKey = activeChartCacheKey(id, sheetId);
 
           // ── Compute symmetric y-axis max ─────────────────────
           const isPopulation = cd.variant === 'population';
+          const isNativeExcel = cd.source === 'excel-native';
           let yMax;
           let step;
           if (isPopulation) {
@@ -1191,6 +1472,8 @@ createApp({
             options: {
               responsive: true,
               maintainAspectRatio: false,
+              indexAxis: cd.indexAxis || 'x',
+              ...(cd.cutout ? { cutout: cd.cutout } : {}),
               interaction: {
                 mode: 'nearest',
                 intersect: true,
@@ -1202,7 +1485,7 @@ createApp({
                   nativeTarget.style.cursor = activeElements && activeElements.length ? 'pointer' : 'default';
                 }
                 if (activeElements && activeElements.length) {
-                  chartHoverStates[id] = normalizeActiveElements(activeElements);
+                  chartHoverStates[chartKey] = normalizeActiveElements(activeElements);
                 }
               },
               layout: {
@@ -1210,7 +1493,7 @@ createApp({
               },
               plugins: {
                 legend: {
-                  position: 'top',
+                  position: cd.legendPosition || 'top',
                   align: 'center',
                   labels: {
                     font: { family: 'Plus Jakarta Sans', size: 11, weight: '400' },
@@ -1220,6 +1503,13 @@ createApp({
                     usePointStyle: false,
                     color: '#1e293b',
                   }
+                },
+                title: {
+                  display: !!cd.title,
+                  text: cd.title || '',
+                  color: '#334155',
+                  font: { family: 'Plus Jakarta Sans', size: 14, weight: '700' },
+                  padding: { bottom: 10 },
                 },
                 tooltip: {
                   mode: 'nearest',
@@ -1231,30 +1521,34 @@ createApp({
                   displayColors: true,
                   callbacks: {
                     label: ctx => {
-                      const v = typeof ctx.parsed.y === 'number' ? ctx.parsed.y : ctx.parsed;
-                      const display = isPopulation && v < 0
-                        ? `-${Math.abs(v).toLocaleString()}`
-                        : Number(v).toLocaleString();
-                      return ` ${ctx.dataset.label}: ${display}`;
+                      if (isPieLikeChartType(ctx.chart?.config?.type || cd.type)) {
+                        return ` ${chartPointSeriesText(ctx.chart, ctx.datasetIndex, ctx.dataIndex)}`;
+                      }
+                      const value = typeof ctx.parsed?.y === 'number'
+                        ? ctx.parsed.y
+                        : (typeof ctx.parsed === 'number' ? ctx.parsed : ctx.raw);
+                      return ` ${ctx.dataset.label || 'Value'}: ${formatChartValue(value)}`;
                     }
                   }
                 }
               },
               scales: {
                 x: {
-                  stacked: isPopulation,
+                  display: !['pie', 'doughnut', 'radar'].includes(cd.type),
+                  stacked: isPopulation || !!cd.stacked,
                   ticks: {
                     font: { family: 'Plus Jakarta Sans', size: 9.5 },
                     maxRotation: 55,
                     minRotation: 45,
                     color: '#374151',
-                    autoSkip: !isPopulation,
+                    autoSkip: !isPopulation && !isNativeExcel,
                   },
                   grid: { display: false },
                   border: { color: '#9ca3af', width: 1 },
                 },
                 y: {
-                  stacked: isPopulation,
+                  display: !['pie', 'doughnut', 'radar'].includes(cd.type),
+                  stacked: isPopulation || !!cd.stacked,
                   min: isPopulation ? -yMax : undefined,
                   max: isPopulation ? yMax : undefined,
                   ticks: {
@@ -1276,7 +1570,7 @@ createApp({
                 bar: {
                   borderRadius: 0,
                   borderSkipped: false,
-                  categoryPercentage: 0.85,
+                  categoryPercentage: isNativeExcel ? 0.72 : 0.85,
                   barPercentage: 1.0,
                 }
               }
@@ -1286,8 +1580,8 @@ createApp({
       });
     }
 
-    watch([viewEntry, displayMode], ([entry, mode]) => {
-      if (entry && shouldUseStandardizedLayout(entry.id)) renderChart(entry.id);
+    watch([viewEntry, displayMode, activeWorkbookSheetId], ([entry]) => {
+      if (entry && chartData(entry.id, activeWorkbookSheetId.value)) renderChart(entry.id, activeWorkbookSheetId.value);
       else if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
     });
 
@@ -1295,10 +1589,12 @@ createApp({
       sheets.value = loadSheets();
       loadExtendedFontPack();
       viewEntry.value = entry;
+      activeWorkbookSheetId.value = resolveSheetId(entry.id) || workbookSheets(entry.id)[0]?.id || 'sheet-1';
       downloadOpen.value = false;
     }
     function closeSheet() {
       viewEntry.value = null;
+      activeWorkbookSheetId.value = '';
       downloadOpen.value = false;
     }
 
@@ -1337,7 +1633,21 @@ createApp({
     function hexToRgb(hex, fallback = '4472C4') {
       const clean = String(hex || '').trim();
       const match = clean.match(/^#?([0-9a-f]{6})$/i);
-      return match ? match[1].toUpperCase() : fallback;
+      if (match) return match[1].toUpperCase();
+
+      const rgbMatch = clean.match(/^rgba?\(([^)]+)\)$/i);
+      if (!rgbMatch) return fallback;
+
+      const parts = rgbMatch[1].split(',').map(part => part.trim());
+      if (parts.length < 3) return fallback;
+
+      const [r, g, b] = parts.slice(0, 3).map(part =>
+        Math.max(0, Math.min(255, Math.round(parseFloat(part) || 0)))
+      );
+
+      return [r, g, b]
+        .map(part => part.toString(16).padStart(2, '0').toUpperCase())
+        .join('');
     }
 
     function xmlEscape(value) {
@@ -1363,7 +1673,8 @@ createApp({
     }
 
     function buildTagVaultExportPayload(entry) {
-      const rawSheet = rawSheetData(entry.id);
+      const selectedSheetId = resolveSheetId(entry.id, activeWorkbookSheetId.value);
+      const rawSheet = rawSheetData(entry.id, selectedSheetId);
       return {
         version: TAGVAULT_META_VERSION,
         entry: {
@@ -1375,9 +1686,24 @@ createApp({
           rows: rawSheet.rows,
           cols: rawSheet.cols,
           data: rawSheet.data.map(row => row.map(cell => String(cell ?? ''))),
-          theme: { ...sheetTheme(entry.id) },
-          cellStyles: { ...sheetCellStyles(entry.id) },
-          styleMode: sheetStyleMode(entry.id),
+          theme: { ...sheetTheme(entry.id, selectedSheetId) },
+          cellStyles: { ...sheetCellStyles(entry.id, selectedSheetId) },
+          styleMode: sheetStyleMode(entry.id, selectedSheetId),
+          ...(rawSheet.nativeChart ? { nativeChart: JSON.parse(JSON.stringify(rawSheet.nativeChart)) } : {}),
+        },
+        workbook: {
+          activeSheetId: selectedSheetId,
+          sheets: workbookSheets(entry.id).map(sheet => ({
+            id: sheet.id,
+            name: sheet.name,
+            rows: sheet.rows,
+            cols: sheet.cols,
+            data: sheet.data.map(row => row.map(cell => String(cell ?? ''))),
+            theme: { ...sheetTheme(entry.id, sheet.id) },
+            cellStyles: { ...sheetCellStyles(entry.id, sheet.id) },
+            styleMode: sheetStyleMode(entry.id, sheet.id),
+            ...(sheet.nativeChart ? { nativeChart: JSON.parse(JSON.stringify(sheet.nativeChart)) } : {}),
+          })),
         },
       };
     }
@@ -1635,10 +1961,11 @@ createApp({
     }
 
     function applyExcelTableStyles(worksheet, entry, dataSet, options = {}) {
-      const theme = sheetTheme(entry.id);
-      const customCellStyles = sheetCellStyles(entry.id);
+      const sheetId = options.sheetId || resolveSheetId(entry.id, activeWorkbookSheetId.value);
+      const theme = sheetTheme(entry.id, sheetId);
+      const customCellStyles = sheetCellStyles(entry.id, sheetId);
       const colCount = dataSet.cols;
-      const useStandardizedLayout = options.useStandardizedLayout ?? shouldUseStandardizedLayout(entry.id);
+      const useStandardizedLayout = options.useStandardizedLayout ?? shouldUseStandardizedLayout(entry.id, sheetId);
 
       for (let ri = 0; ri < dataSet.data.length; ri++) {
         const row = dataSet.data[ri];
@@ -1683,7 +2010,7 @@ createApp({
             applyExcelCellStyle(cell, rowStyle);
 
             if (useStandardizedLayout) {
-              const cellClassName = cellClass(row, ri, ci);
+              const cellClassName = cellClass(entry.id, row, ri, ci, sheetId);
               if (cellClassName === 'cell-code') {
                 applyExcelCellStyle(cell, {
                   fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: ri % 2 === 0 ? 'FF3B0764' : hexToArgb(theme.code, 'FF4C1D95') } },
@@ -1760,20 +2087,56 @@ createApp({
     }
 
     function addChartDataWorksheet(workbook, entry, renderedChartData) {
-      if (!renderedChartData || renderedChartData.type !== 'bar' || !renderedChartData.datasets?.length) return null;
+      if (!renderedChartData?.datasets?.length) return null;
+
+      const chartType = String(renderedChartData.type || '').toLowerCase();
+      if (!['bar', 'pie', 'doughnut'].includes(chartType)) return null;
 
       const chartSheetName = sanitizeWorksheetName(`ChartData_${entry.id}`, 'ChartData');
       const worksheet = workbook.addWorksheet(chartSheetName, { state: 'veryHidden' });
-      const headers = ['Category', ...renderedChartData.datasets.map(ds => ds.label || 'Series')];
-      worksheet.addRow(headers);
+      let headers = [];
+      let datasets = [];
 
-      renderedChartData.labels.forEach((label, rowIndex) => {
-        const row = [label];
-        renderedChartData.datasets.forEach(ds => {
-          row.push(ds.data?.[rowIndex] ?? '');
+      if (isPieLikeChartType(chartType)) {
+        const firstDataset = renderedChartData.datasets[0];
+        if (!firstDataset?.data?.length || !renderedChartData.labels?.length) return null;
+
+        headers = ['Category', firstDataset.label || 'Values'];
+        worksheet.addRow(headers);
+
+        renderedChartData.labels.forEach((label, rowIndex) => {
+          worksheet.addRow([label, firstDataset.data?.[rowIndex] ?? '']);
         });
-        worksheet.addRow(row);
-      });
+
+        datasets = [{
+          index: 0,
+          label: firstDataset.label || 'Values',
+          color: hexToRgb(resolveChartPointColor(firstDataset, 0, colorAt(0)), '4472C4'),
+          column: 1,
+          points: renderedChartData.labels.map((_, index) => ({
+            index,
+            color: hexToRgb(resolveChartPointColor(firstDataset, index, colorAt(index)), hexToRgb(colorAt(index), '4472C4')),
+          })),
+        }];
+      } else {
+        headers = ['Category', ...renderedChartData.datasets.map(ds => ds.label || 'Series')];
+        worksheet.addRow(headers);
+
+        renderedChartData.labels.forEach((label, rowIndex) => {
+          const row = [label];
+          renderedChartData.datasets.forEach(ds => {
+            row.push(ds.data?.[rowIndex] ?? '');
+          });
+          worksheet.addRow(row);
+        });
+
+        datasets = renderedChartData.datasets.map((ds, index) => ({
+          index,
+          label: ds.label || `Series ${index + 1}`,
+          color: hexToRgb(resolveChartPointColor(ds, index, colorAt(index)), '4472C4'),
+          column: index + 1,
+        }));
+      }
 
       worksheet.state = 'veryHidden';
       return {
@@ -1781,12 +2144,12 @@ createApp({
         rows: renderedChartData.labels.length + 1,
         cols: headers.length,
         labelsCount: renderedChartData.labels.length,
-        datasets: renderedChartData.datasets.map((ds, index) => ({
-          index,
-          label: ds.label || `Series ${index + 1}`,
-          color: hexToRgb(ds.backgroundColor, '4472C4'),
-          column: index + 1,
-        })),
+        type: chartType,
+        legendPosition: renderedChartData.legendPosition || 'top',
+        cutout: renderedChartData.cutout || '',
+        indexAxis: renderedChartData.indexAxis || 'x',
+        stacked: !!renderedChartData.stacked,
+        datasets,
         variant: renderedChartData.variant || 'generic',
       };
     }
@@ -1794,9 +2157,59 @@ createApp({
     function buildChartXml(chartMeta) {
       const sheetRef = quoteSheetName(chartMeta.sheetName);
       const catRange = `${sheetRef}!$A$2:$A$${chartMeta.labelsCount + 1}`;
+      const legendPos = ({ top: 't', bottom: 'b', left: 'l', right: 'r' })[chartMeta.legendPosition] || 't';
+
+      if (isPieLikeChartType(chartMeta.type)) {
+        const firstSeries = chartMeta.datasets[0];
+        const col = colLetter(firstSeries.column);
+        const titleRef = `${sheetRef}!$${col}$1`;
+        const valRange = `${sheetRef}!$${col}$2:$${col}$${chartMeta.labelsCount + 1}`;
+        const dataPointsXml = (firstSeries.points || []).map(point => `
+        <c:dPt>
+          <c:idx val="${point.index}"/>
+          <c:spPr>
+            <a:solidFill><a:srgbClr val="${point.color}"/></a:solidFill>
+            <a:ln><a:noFill/></a:ln>
+          </c:spPr>
+        </c:dPt>`).join('');
+        const holeSize = chartMeta.type === 'doughnut'
+          ? Math.max(10, Math.min(90, Math.round(parseFloat(String(chartMeta.cutout || '50').replace('%', '')) || 50)))
+          : 0;
+
+        return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:lang val="en-US"/>
+  <c:roundedCorners val="0"/>
+  <c:chart>
+    <c:autoTitleDeleted val="1"/>
+    <c:plotArea>
+      <c:layout/>
+      <c:${chartMeta.type === 'doughnut' ? 'doughnutChart' : 'pieChart'}>
+        <c:varyColors val="1"/>
+        <c:ser>
+          <c:idx val="0"/>
+          <c:order val="0"/>
+          <c:tx><c:strRef><c:f>${xmlEscape(titleRef)}</c:f></c:strRef></c:tx>${dataPointsXml}
+          <c:cat><c:strRef><c:f>${xmlEscape(catRange)}</c:f></c:strRef></c:cat>
+          <c:val><c:numRef><c:f>${xmlEscape(valRange)}</c:f></c:numRef></c:val>
+        </c:ser>${chartMeta.type === 'doughnut' ? `
+        <c:holeSize val="${holeSize}"/>` : ''}
+        <c:firstSliceAng val="0"/>
+      </c:${chartMeta.type === 'doughnut' ? 'doughnutChart' : 'pieChart'}>
+    </c:plotArea>
+    <c:legend>
+      <c:legendPos val="${legendPos}"/>
+      <c:layout/>
+    </c:legend>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
+    <c:showDLblsOverMax val="0"/>
+  </c:chart>
+</c:chartSpace>`;
+      }
+
       const catAxId = 48650112;
       const valAxId = 48672768;
-      const maxAbs = Math.max(0, ...chartMeta.datasets.flatMap(ds => ds.values || []));
       const seriesXml = chartMeta.datasets.map((ds, i) => {
         const col = colLetter(ds.column);
         const titleRef = `${sheetRef}!$${col}$1`;
@@ -1815,6 +2228,9 @@ createApp({
         <c:val><c:numRef><c:f>${xmlEscape(valRange)}</c:f></c:numRef></c:val>
       </c:ser>`;
       }).join('');
+      const barDir = chartMeta.indexAxis === 'y' ? 'bar' : 'col';
+      const grouping = chartMeta.variant === 'population' || chartMeta.stacked ? 'stacked' : 'clustered';
+      const overlap = grouping === 'stacked' ? 100 : 0;
 
       const valueAxisXml = chartMeta.variant === 'population'
         ? `
@@ -1859,11 +2275,11 @@ createApp({
     <c:plotArea>
       <c:layout/>
       <c:barChart>
-        <c:barDir val="col"/>
-        <c:grouping val="stacked"/>
+        <c:barDir val="${barDir}"/>
+        <c:grouping val="${grouping}"/>
         <c:varyColors val="0"/>${seriesXml}
         <c:gapWidth val="60"/>
-        <c:overlap val="100"/>
+        <c:overlap val="${overlap}"/>
         <c:axId val="${catAxId}"/>
         <c:axId val="${valAxId}"/>
       </c:barChart>
@@ -1885,7 +2301,7 @@ createApp({
       </c:catAx>${valueAxisXml}
     </c:plotArea>
     <c:legend>
-      <c:legendPos val="t"/>
+      <c:legendPos val="${legendPos}"/>
       <c:layout/>
     </c:legend>
     <c:plotVisOnly val="1"/>
@@ -2010,8 +2426,10 @@ createApp({
       }
 
       const ExcelJS = window.ExcelJS;
+      const selectedSheetId = resolveSheetId(entry.id, activeWorkbookSheetId.value);
+      const selectedSheetName = currentViewSheetName();
 
-      const dataSet = activeSheetData(entry.id);
+      const dataSet = activeSheetData(entry.id, selectedSheetId);
       if (!dataSet || !dataSet.data || !dataSet.data.length) {
         showToast('No sheet data to export.', 'error');
         return;
@@ -2021,11 +2439,11 @@ createApp({
         const workbook = new ExcelJS.Workbook();
         workbook.creator = 'TagVault';
         workbook.created = new Date();
-        const useStandardizedLayout = shouldUseStandardizedLayout(entry.id);
-        const renderedChartData = useStandardizedLayout ? chartData(entry.id) : null;
+        const useStandardizedLayout = shouldUseStandardizedLayout(entry.id, selectedSheetId);
+        const renderedChartData = chartData(entry.id, selectedSheetId);
         const renderedSnapshot = captureRenderedTableSnapshot(entry, dataSet);
 
-        const worksheet = workbook.addWorksheet(sanitizeWorksheetName(entry.title, 'Sheet1'), {
+        const worksheet = workbook.addWorksheet(sanitizeWorksheetName(selectedSheetName || entry.title, 'Sheet1'), {
           views: [{ state: 'frozen', ySplit: useStandardizedLayout ? 4 : 1 }]
         });
 
@@ -2037,10 +2455,10 @@ createApp({
           applyRenderedTableSnapshot(worksheet, renderedSnapshot);
         } else {
           worksheet.addRows(dataSet.data.map(row => row.map(cell => String(cell || ''))));
-          applyExcelTableStyles(worksheet, entry, dataSet, { useStandardizedLayout });
+          applyExcelTableStyles(worksheet, entry, dataSet, { useStandardizedLayout, sheetId: selectedSheetId });
         }
 
-        const nativeChartMeta = useStandardizedLayout
+        const nativeChartMeta = renderedChartData
           ? addChartDataWorksheet(workbook, entry, renderedChartData)
           : null;
         addTagVaultMetadataWorksheet(workbook, entry);
@@ -2052,7 +2470,7 @@ createApp({
 
         downloadBlob(
           new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-          sanitizeFileName(entry.title, 'xlsx')
+          sanitizeFileName(workbookSheets(entry.id).length > 1 ? `${entry.title}_${selectedSheetName}` : entry.title, 'xlsx')
         );
         showToast('Excel exported!', 'success');
       } catch (err) {
@@ -2061,13 +2479,14 @@ createApp({
     }
 
     function exportCSV(entry) {
-      const s = sheets.value[entry.id];
+      const selectedSheetId = resolveSheetId(entry.id, activeWorkbookSheetId.value);
+      const s = rawSheetData(entry.id, selectedSheetId);
       if (!s) return;
       const lines = s.data.map(row =>
         row.map(cell => '"' + String(cell || '').replace(/"/g, '""') + '"').join(',')
       );
       const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-      downloadBlob(blob, sanitizeFileName(entry.title, 'csv'));
+      downloadBlob(blob, sanitizeFileName(workbookSheets(entry.id).length > 1 ? `${entry.title}_${currentViewSheetName()}` : entry.title, 'csv'));
       showToast('CSV exported!', 'success');
     }
 
@@ -2088,12 +2507,12 @@ createApp({
     }
 
     return {
-      entries, categories, sheets, search, catFilter, displayMode, viewEntry, downloadOpen, toasts,
+      entries, categories, sheets, search, catFilter, displayMode, viewEntry, activeWorkbookSheetId, downloadOpen, toasts,
       catColor, rawSheetData, sheetData, trimmedSheetData, activeSheetData, previewSheetData, sheetTheme, tableThemeStyle, renderCellStyle, hasCustomCellStyle, shouldUseStandardizedLayout,
       sheetDimensions, filledCells, filledCellsByMode, colLetter, displayModeLabel, setDisplayMode,
       entriesWithSheet, filteredEntries, uniqueCategories,
       openSheet, closeSheet, exportCSV, exportExcel, inventoryEditHref, formatDate,
-      rowClass, cellClass, tableRowClass, tableCellClass, chartData,
+      rowClass, cellClass, tableRowClass, tableCellClass, chartData, workbookSheets, selectWorkbookSheet, currentViewSheetData, currentViewSheetName, currentViewSheetMeta, currentChartData,
       isMergedRow, getMergedText,
     };
   }
