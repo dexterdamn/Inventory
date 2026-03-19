@@ -607,7 +607,7 @@ createApp({
         const sourceRow = Array.isArray(sourceData[ri]) ? sourceData[ri] : [];
         const next = sourceRow.slice(0, cols).map(cell => String(cell ?? ''));
         while (next.length < cols) next.push('');
-        return next;
+        return normalizeMergedTextRow(next);
       });
       return {
         id: String(sheet?.id || fallbackId),
@@ -813,6 +813,24 @@ createApp({
       const sample = (rows || []).slice(0, 6).map(row => row.map(c => String(c || '').trim().toUpperCase()).join(' ')).join(' ');
       const signals = ['LOCATION', 'PSA', 'BRGY', 'CBMS', 'POPCEN', 'MALE HEADED', 'FEMALE HEADED'];
       return signals.filter(signal => sample.includes(signal)).length >= 2;
+    }
+
+    function normalizeMergedTextRow(row) {
+      if (!Array.isArray(row) || row.length < 2) return Array.isArray(row) ? row : [];
+      const normalized = row.map(cell => String(cell ?? ''));
+      const nonEmpty = normalized
+        .map((cell, index) => ({ index, value: cell.trim() }))
+        .filter(cell => cell.value);
+
+      if (nonEmpty.length < 2) return normalized;
+
+      const firstValue = nonEmpty[0].value;
+      const allSame = nonEmpty.every(cell => cell.value === firstValue);
+      const isNumericLike = parseNum(firstValue) !== null || /^\d{2,3}:\d{1,3}$/.test(firstValue);
+      if (!allSame || isNumericLike) return normalized;
+
+      const firstIndex = nonEmpty[0].index;
+      return normalized.map((cell, index) => (index === firstIndex ? firstValue : ''));
     }
 
     // ════════════════════════════════════════════════════════════
@@ -2503,7 +2521,9 @@ createApp({
     }
 
     function getMergedText(row) {
-      return row.filter(c => c && String(c).trim()).join('  ');
+      return normalizeMergedTextRow(row)
+        .filter(c => c && String(c).trim())
+        .join('  ');
     }
 
     return {

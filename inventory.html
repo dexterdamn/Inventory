@@ -617,6 +617,22 @@ function saveSheets(data) { localStorage.setItem(SHEET_STORE, JSON.stringify(dat
 function loadRecentFonts() { try { return JSON.parse(localStorage.getItem(RECENT_FONTS_STORE)) || []; } catch { return []; } }
 function saveRecentFonts(fonts) { localStorage.setItem(RECENT_FONTS_STORE, JSON.stringify(fonts)); }
 function makeGrid(rows, cols) { return Array.from({length:rows},()=>Array(cols).fill('')); }
+function normalizeMergedTextRow(row) {
+  if (!Array.isArray(row) || row.length < 2) return Array.isArray(row) ? row : [];
+  const normalized = row.map(cell => String(cell ?? ''));
+  const nonEmpty = normalized
+    .map((cell, index) => ({ index, value: cell.trim() }))
+    .filter(cell => cell.value);
+  if (nonEmpty.length < 2) return normalized;
+
+  const firstValue = nonEmpty[0].value;
+  const allSame = nonEmpty.every(cell => cell.value === firstValue);
+  const numericLike = /^\-?[\d,]+(\.\d+)?$/.test(firstValue) || /^\d{2,3}:\d{1,3}$/.test(firstValue);
+  if (!allSame || numericLike) return normalized;
+
+  const firstIndex = nonEmpty[0].index;
+  return normalized.map((cell, index) => index === firstIndex ? firstValue : '');
+}
 function normalizeStoredSheetRecord(sheet, fallbackName = 'Sheet 1', fallbackId = 'sheet-1') {
   const rows = Math.max(0, parseInt(sheet?.rows, 10) || 0);
   const cols = Math.max(0, parseInt(sheet?.cols, 10) || 0);
@@ -625,7 +641,7 @@ function normalizeStoredSheetRecord(sheet, fallbackName = 'Sheet 1', fallbackId 
     name: String(sheet?.name || fallbackName),
     rows,
     cols,
-    data: resizeGridData(Array.isArray(sheet?.data) ? sheet.data : [], rows, cols),
+    data: resizeGridData(Array.isArray(sheet?.data) ? sheet.data : [], rows, cols).map(normalizeMergedTextRow),
     theme: { ...(sheet?.theme || {}) },
     cellStyles: { ...(sheet?.cellStyles || {}) },
     styleMode: sheet?.styleMode || '',

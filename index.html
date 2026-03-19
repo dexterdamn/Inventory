@@ -385,6 +385,19 @@ function formatImportedCellValue(cell) {
   return String(cell?.text || value || '');
 }
 
+function formatImportedWorksheetCell(cell) {
+  if (!cell) return '';
+  const masterCell = cell.master && cell.master.address ? cell.master : cell;
+  const isMergedChild = !!(
+    masterCell &&
+    masterCell.address &&
+    cell.address &&
+    masterCell.address !== cell.address
+  );
+  if (isMergedChild) return '';
+  return formatImportedCellValue(masterCell || cell);
+}
+
 function countImportedFilledCells(sheet) {
   return (Array.isArray(sheet?.data) ? sheet.data : []).reduce((total, row) =>
     total + (Array.isArray(row) ? row.filter(cell => String(cell ?? '').trim()).length : 0)
@@ -907,7 +920,7 @@ async function parseXlsxFile(file) {
         const row = worksheet.getRow(ri);
         const nextRow = [];
         for (let ci = 1; ci <= cols; ci++) {
-          nextRow.push(formatImportedCellValue(row.getCell(ci)));
+          nextRow.push(formatImportedWorksheetCell(row.getCell(ci)));
         }
         data.push(nextRow);
       }
