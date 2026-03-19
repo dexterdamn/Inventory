@@ -1,6 +1,8 @@
 // ── TagVault Shared Data Layer ──────────────────────────────────────
 const DB_KEY  = 'tagvault_entries';
 const CAT_KEY = 'tagvault_categories';
+const ID_KEY  = 'tagvault_next_id';
+const SHEET_KEY = 'tagvault_sheets';
 
 const DEFAULT_CATEGORIES = [
   { name: 'CSV',   color: '#a78bfa' },
@@ -19,6 +21,28 @@ function loadEntries() {
 
 function saveEntries(data) {
   localStorage.setItem(DB_KEY, JSON.stringify(data));
+}
+
+function readNextIdSeed() {
+  const seededMax = DEFAULT_ENTRIES.reduce((max, entry) => Math.max(max, entry.id), 0);
+  try {
+    const raw = parseInt(localStorage.getItem(ID_KEY), 10);
+    return Number.isFinite(raw) && raw > seededMax ? raw : seededMax;
+  } catch {
+    return seededMax;
+  }
+}
+
+function readSheetIdSeed() {
+  try {
+    const sheets = JSON.parse(localStorage.getItem(SHEET_KEY)) || {};
+    return Object.keys(sheets).reduce((max, key) => {
+      const id = parseInt(key, 10);
+      return Number.isFinite(id) ? Math.max(max, id) : max;
+    }, 0);
+  } catch {
+    return 0;
+  }
 }
 
 function loadCategories() {
@@ -40,7 +64,10 @@ function tagClass(t) {
 }
 
 function nextId(entries) {
-  return entries.length ? Math.max(...entries.map(e => e.id)) + 1 : 1;
+  const currentMax = entries.length ? Math.max(...entries.map(e => e.id)) : 0;
+  const next = Math.max(readNextIdSeed(), readSheetIdSeed(), currentMax) + 1;
+  localStorage.setItem(ID_KEY, String(next));
+  return next;
 }
 
 function formatDate(ts) {
